@@ -3,46 +3,45 @@
 ![Jellyfin](https://img.shields.io/badge/Jellyfin-10.11+-00A4DC?style=flat-square&logo=jellyfin&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Build](https://img.shields.io/badge/Build-passing-brightgreen?style=flat-square)
 
-A Jellyfin metadata plugin that automatically replaces English movie and TV series titles and overviews with Russian translations using **TMDB** (primary) and **Wikidata** (fallback).
+Плагин для Jellyfin, который автоматически заменяет английские названия и описания фильмов и сериалов на русские. Использует **TMDB** (основной источник) и **Wikidata** (резервный).
 
 ---
 
-## Features
+## Возможности
 
-- **🇷🇺 Russian titles & overviews** — movies and TV series get localized names and descriptions
-- **Dual-source fallback** — TMDB for rich metadata (via proxy support), Wikidata (SPARQL) as automatic fallback
-- **Configurable** — enable/disable title and overview replacement independently via Jellyfin Dashboard
-- **Proxy support** — optional HTTP proxy for TMDB API access (useful in regions where TMDB is blocked)
-- **Smart cascading** — tries TMDB first (richest data), falls back to Wikidata if unavailable
-- **Logging** — detailed diagnostic logs for debugging metadata resolution
-- **IMDb ID extraction** — automatically extracts IMDb IDs from file/folder names and provider keys
+- **🇷🇺 Русские названия и описания** — фильмы и сериалы отображаются на русском языке
+- **Два источника данных** — TMDB (богатые метаданные, поддержка прокси), Wikidata (SPARQL) как резерв
+- **Гибкая настройка** — включение/отключение замены названий и описаний независимо друг через друга
+- **Прокси** — опциональный HTTP-прокси для доступа к TMDB (полезно в регионах, где TMDB заблокирован)
+- **Умный каскад** — сначала TMDB (самые полные данные), затем Wikidata
+- **Подробное логирование** — диагностические сообщения с префиксом `RussianMetadata:`
+- **Извлечение IMDb ID** — автоматически находит IMDb ID из названий файлов и папок
 
-## Requirements
+## Требования
 
-| Requirement | Version |
-|-------------|---------|
-| Jellyfin    | 10.11.x |
-| .NET Runtime | 9.0+ (bundled with Jellyfin 10.11) |
-| TMDB API key | [Get one free](https://www.themoviedb.org/settings/api) (optional, Wikidata fallback works without) |
+| Компонент | Версия |
+|-----------|--------|
+| Jellyfin  | 10.11.x |
+| .NET Runtime | 9.0+ (входит в состав Jellyfin 10.11) |
+| TMDB API key | [Бесплатно](https://www.themoviedb.org/settings/api) (необязательно, Wikidata работает без ключа) |
 
-## Installation
+## Установка
 
-### Option 1: Manual installation
+### Вариант 1: Вручную
 
-1. Download the latest `RussianMetadata.dll` from [Releases](https://github.com/Opiumforme/jellifin-russian-metadata/releases)
-2. Copy the DLL to your Jellyfin `plugins` directory:
+1. Скачайте `RussianMetadata.dll` из [Releases](https://github.com/Opiumforme/jellifin-russian-metadata/releases)
+2. Скопируйте в директорию плагинов Jellyfin:
    ```
    /path/to/jellyfin/plugins/RussianMetadata/RussianMetadata.dll
    ```
-3. Restart Jellyfin
-4. Go to **Dashboard → Plugins → Russian Metadata** and configure
-5. Assign **Russian Metadata** as a metadata downloader for your libraries:
-   - **Movies**: Dashboard → Libraries → your movie library → Metadata downloaders → check **Russian Metadata**
-   - **TV Shows**: Dashboard → Libraries → your TV library → Metadata downloaders → check **Russian Metadata**
+3. Перезапустите Jellyfin
+4. Перейдите в **Dashboard → Plugins → Russian Metadata** и настройте
+5. Назначьте **Russian Metadata** загрузчиком метаданных для библиотек:
+   - **Фильмы**: Dashboard → Libraries → ваша библиотека фильмов → Metadata downloaders → отметьте **Russian Metadata**
+   - **ТВ-передачи**: Dashboard → Libraries → ваша библиотека ТВ → Metadata downloaders → отметьте **Russian Metadata**
 
-### Option 2: Build from source
+### Вариант 2: Сборка из исходников
 
 ```bash
 git clone https://github.com/Opiumforme/jellifin-russian-metadata.git
@@ -50,109 +49,105 @@ cd jellifin-russian-metadata/RussianMetadata
 dotnet build -c Release
 ```
 
-Copy `bin/Release/net9.0/RussianMetadata.dll` to your plugins folder.
+Скопируйте `bin/Release/net9.0/RussianMetadata.dll` в папку плагинов.
 
-## Configuration
+## Настройка
 
-![Configuration](https://img.shields.io/badge/Dashboard-Plugins-blue?style=flat-square)
+**Dashboard → Plugins → Russian Metadata → Settings:**
 
-Navigate to **Dashboard → Plugins → Russian Metadata → Settings**:
+| Параметр | Описание |
+|----------|----------|
+| **TMDB API Key** | Ваш TMDB API ключ (v3 auth). [Получить](https://www.themoviedb.org/settings/api) |
+| **Enable Russian Titles** | Заменять английские названия на русские |
+| **Enable Russian Overviews** | Заменять английские описания на русские |
+| **Proxy URL** | URL HTTP-прокси (например `http://proxy.example.com:3128`) |
+| **Proxy Username** | Имя пользователя для прокси (опционально) |
+| **Proxy Password** | Пароль для прокси (опционально) |
 
-| Setting | Description |
-|---------|-------------|
-| **TMDB API Key** | Your TMDB API key (v3 auth). [Get one here](https://www.themoviedb.org/settings/api) |
-| **Enable Russian Titles** | Replace English titles with Russian |
-| **Enable Russian Overviews** | Replace English descriptions with Russian |
-| **Proxy URL** | HTTP proxy URL for TMDB (e.g. `http://proxy.example.com:3128`) |
-| **Proxy Username** | Proxy authentication username (optional) |
-| **Proxy Password** | Proxy authentication password (optional) |
+> **Примечание:** TMDB не обязателен. Без API-ключа плагин использует Wikidata, который содержит русские названия и описания для большинства известных фильмов и сериалов.
 
-> **Note:** TMDB is optional. Without an API key, the plugin falls back to Wikidata, which provides Russian labels and descriptions for most well-known movies and TV series.
-
-## How It Works
+## Как это работает
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Jellyfin Metadata Refresh                       │
+│  Обновление метаданных Jellyfin                   │
 │                                                   │
-│  1. Extract IMDb ID (ttXXXXXXXX) from file path   │
-│     or existing provider keys                     │
+│  1. Извлечение IMDb ID (ttXXXXXXXX) из пути к     │
+│     файлу или существующих ProviderIds            │
 │                                                   │
-│  2. Try TMDB (with proxy if configured)           │
-│     ├── Find movie/series by IMDb ID              │
-│     └── Fetch Russian details (title, overview)   │
+│  2. Запрос к TMDB (через прокси, если настроен)   │
+│     ├── Поиск фильма/сериала по IMDb ID           │
+│     └── Получение русских данных (название, опис.) │
 │                                                   │
-│  3. Fallback: Wikidata SPARQL query               │
-│     ├── Query by IMDb ID → Russian label/desc     │
-│     └── Query by name if no IMDb ID               │
+│  3. Резерв: запрос к Wikidata (SPARQL)            │
+│     ├── Поиск по IMDb ID → русская метка/описание │
+│     └── Поиск по названию, если нет IMDb ID       │
 │                                                   │
-│  4. Apply Russian metadata to the item            │
+│  4. Применение русских метаданных к элементу      │
 └─────────────────────────────────────────────────┘
 ```
 
-### Priority
+### Приоритет источников
 
-1. **TMDB** — rich metadata, Russian overviews (500+ chars), uses optional proxy
-2. **Wikidata by IMDb ID** — reliable, shorter descriptions
-3. **Wikidata by name** — fallback when no IMDb ID is available
+1. **TMDB** — богатые метаданные, русские описания (500+ символов), поддержка прокси
+2. **Wikidata по IMDb ID** — надёжный источник, более короткие описания
+3. **Wikidata по названию** — резерв, когда IMDb ID недоступен
 
-## Building from Source
+## Сборка из исходников
 
 ```bash
-# Prerequisites: .NET 9.0 SDK
-# Download from: https://dotnet.microsoft.com/download
+# Требуется: .NET 9.0 SDK
+# Скачать: https://dotnet.microsoft.com/download
 
 git clone https://github.com/Opiumforme/jellifin-russian-metadata.git
 cd jellifin-russian-metadata/RussianMetadata
 
-# Build
+# Сборка
 dotnet build
 
-# Build (release)
+# Сборка (release)
 dotnet build -c Release
 
-# Output: bin/Debug/net9.0/RussianMetadata.dll
+# Результат: bin/Debug/net9.0/RussianMetadata.dll
 ```
 
-## Development
-
-### Project Structure
+## Структура проекта
 
 ```
 RussianMetadata/
 ├── Configuration/
-│   ├── PluginConfiguration.cs    # Plugin settings model
-│   └── configPage.html           # Web UI for Dashboard
-├── Plugin.cs                     # Plugin entry point
-├── RussianMovieProvider.cs       # Movie metadata provider
-├── RussianSeriesProvider.cs      # TV series metadata provider
-├── RussianMetadata.csproj        # .NET project file
+│   ├── PluginConfiguration.cs    # Модель настроек плагина
+│   └── configPage.html           # Веб-интерфейс в Dashboard
+├── Plugin.cs                     # Точка входа плагина
+├── RussianMovieProvider.cs       # Провайдер метаданных для фильмов
+├── RussianSeriesProvider.cs      # Провайдер метаданных для сериалов
+├── RussianMetadata.csproj        # Файл проекта .NET
 ├── README.md
 └── LICENSE
 ```
 
-### Key Interfaces
+### Ключевые интерфейсы
 
-| Interface | Purpose |
-|-----------|---------|
-| `IRemoteMetadataProvider<Movie, MovieInfo>` | Remote provider for movies |
-| `IRemoteMetadataProvider<Series, SeriesInfo>` | Remote provider for TV series |
-| `ICustomMetadataProvider<Movie>` | Applies Russian data after all remote providers |
-| `ICustomMetadataProvider<Series>` | Same for TV series |
+| Интерфейс | Назначение |
+|-----------|------------|
+| `IRemoteMetadataProvider<Movie, MovieInfo>` | Удалённый провайдер для фильмов |
+| `IRemoteMetadataProvider<Series, SeriesInfo>` | Удалённый провайдер для сериалов |
+| `ICustomMetadataProvider<Movie>` | Применяет русские данные после всех провайдеров |
+| `ICustomMetadataProvider<Series>` | То же для сериалов |
 
-## Troubleshooting
+## Решение проблем
 
-1. **Check Jellyfin logs** for `RussianMetadata:` entries — they contain detailed diagnostic info
-2. **TMDB not responding?** Configure a proxy if TMDB is blocked in your region
-3. **No Russian data applied?** Verify the item has an IMDb ID (`ProviderIds.Imdb`) in its metadata
-4. **Build fails?** Ensure .NET 9.0 SDK is installed
+1. **Проверьте логи Jellyfin** — ищите записи с префиксом `RussianMetadata:`
+2. **TMDB не отвечает?** — настройте прокси, если TMDB заблокирован в вашем регионе
+3. **Русские данные не применяются?** — убедитесь, что у элемента есть IMDb ID (`ProviderIds.Imdb`)
+4. **Сборка не удаётся?** — проверьте, что установлен .NET 9.0 SDK
 
-## License
+## Лицензия
 
 [MIT](LICENSE) © Tarasov Radomir
 
 ---
 
 <p align="center">
-  <sub>Built for the Jellyfin community · Not affiliated with Jellyfin or TMDB</sub>
+  <sub>Сделано для сообщества Jellyfin · Не аффилирован с Jellyfin или TMDB</sub>
 </p>

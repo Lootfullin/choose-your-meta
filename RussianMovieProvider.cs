@@ -41,21 +41,14 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
 
     public Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
     {
-        // Only extract and set provider IDs here; actual Russian data is applied
-        // in ICustomMetadataProvider.FetchAsync after all remote providers have run.
+        // Do NOT create a new Movie() here — Jellyfin may interpret a non-null
+        // Item with HasMetadata=false as a valid result and overwrite existing data.
+        // IMDb ID extraction and all other work is done in FetchAsync.
         var result = new MetadataResult<Movie>();
 
-        string? imdbId = ExtractImdbId(info);
-
         _logger.LogInformation(
-            "RussianMetadata: GetMetadata — Name='{Name}', ExtractedImdbId={ImdbId}",
-            info.Name, imdbId ?? "N/A");
-
-        if (!string.IsNullOrEmpty(imdbId))
-        {
-            result.Item ??= new Movie();
-            result.Item.SetProviderId("Imdb", imdbId);
-        }
+            "RussianMetadata: GetMetadata — Name='{Name}'",
+            info.Name ?? "?");
 
         return Task.FromResult(result);
     }

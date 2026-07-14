@@ -39,10 +39,8 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
 
     public string Name => "Russian Metadata";
 
-    public async Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
+    public Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
     {
-        // Only extract/set provider IDs here; actual Russian data is applied
-        // in ICustomMetadataProvider.FetchAsync after all remote providers.
         var result = new MetadataResult<Series>();
 
         string? imdbId = ExtractImdbId(info);
@@ -51,21 +49,7 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             "RussianMetadata (Series): GetMetadata — Name='{Name}', ExtractedImdbId={ImdbId}",
             info.Name, imdbId ?? "N/A");
 
-        // If no IMDb ID found, try Wikidata to find one via series name
-        if (string.IsNullOrEmpty(imdbId) && !string.IsNullOrEmpty(info.Name))
-        {
-            try { imdbId = await FindImdbIdBySeriesName(info.Name, cancellationToken); }
-            catch { /* FetchAsync will retry */ }
-            _logger.LogInformation("RussianMetadata (Series): After FindImdbIdBySeriesName — ImdbId={Id}", imdbId ?? "N/A");
-        }
-
-        if (!string.IsNullOrEmpty(imdbId))
-        {
-            result.Item ??= new Series();
-            result.Item.SetProviderId("Imdb", imdbId);
-        }
-
-        return result;
+        return Task.FromResult(result);
     }
 
     // ───── ICustomMetadataProvider: runs AFTER all remote providers to apply Russian data ─────

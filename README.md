@@ -10,7 +10,7 @@
 
 ## Возможности
 
-- **🇷🇺 Русские названия и описания** — фильмы и сериалы отображаются на русском языке
+- **🇷🇺 Русские названия и описания** — фильмы, сериалы и эпизоды отображаются на русском языке
 - **Два источника данных** — TMDB (богатые метаданные, поддержка прокси), Wikidata (SPARQL) как резерв
 - **Гибкая настройка** — включение/отключение замены названий и описаний независимо друг через друга
 - **Прокси** — опциональный HTTP-прокси для доступа к TMDB (полезно в регионах, где TMDB заблокирован)
@@ -36,10 +36,19 @@
    /path/to/jellyfin/plugins/RussianMetadata/RussianMetadata.dll
    ```
 3. Перезапустите Jellyfin
-4. Перейдите в **Dashboard → Plugins → Russian Metadata** и настройте
-5. Назначьте **Russian Metadata** загрузчиком метаданных для библиотек:
-   - **Фильмы**: Dashboard → Libraries → ваша библиотека фильмов → Metadata downloaders → отметьте **Russian Metadata**
-   - **ТВ-передачи**: Dashboard → Libraries → ваша библиотека ТВ → Metadata downloaders → отметьте **Russian Metadata**
+4. Перейдите в **Dashboard → Plugins → Russian Metadata** и настройте (TMDB API key, прокси, включить названия/описания)
+5. **Назначьте Russian Metadata загрузчиком метаданных для библиотек** — без этого плагин не будет обрабатывать медиа:
+
+   **Для фильмов:** Dashboard → Libraries → ваша библиотека фильмов → ✏️ → **Metadata Downloaders** → выберите `Russian Metadata` → переместите наверх списка ✅
+
+   **Для ТВ-передач:** Dashboard → Libraries → ваша библиотека ТВ → ✏️ → **Metadata Downloaders** → выберите `Russian Metadata` → переместите наверх списка ✅
+
+   > **Зачем это нужно?** Jellyfin вызывает провайдеров метаданных для каждой библиотеки только если они включены в её Metadata Downloaders. Без этого шага плагин не будет обрабатывать фильмы и сериалы.
+   > Приоритет: переместите `Russian Metadata` наверх, чтобы он обрабатывался первым.
+
+6. **Обновите метаданные** после настройки:
+   - 📺 TV библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** → **Refresh**
+   - 🎬 Movies библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** → **Refresh**
 
 ### Вариант 2: Сборка из исходников
 
@@ -145,6 +154,7 @@ RussianMetadata/
 ├── Plugin.cs                     # Точка входа плагина
 ├── RussianMovieProvider.cs       # Провайдер метаданных для фильмов
 ├── RussianSeriesProvider.cs      # Провайдер метаданных для сериалов
+├── RussianEpisodeProvider.cs     # Провайдер метаданных для эпизодов
 ├── RussianMetadata.csproj        # Файл проекта .NET
 ├── README.md
 └── LICENSE
@@ -156,15 +166,18 @@ RussianMetadata/
 |-----------|------------|
 | `IRemoteMetadataProvider<Movie, MovieInfo>` | Удалённый провайдер для фильмов |
 | `IRemoteMetadataProvider<Series, SeriesInfo>` | Удалённый провайдер для сериалов |
+| `IRemoteMetadataProvider<Episode, EpisodeInfo>` | Удалённый провайдер для эпизодов |
 | `ICustomMetadataProvider<Movie>` | Применяет русские данные после всех провайдеров |
 | `ICustomMetadataProvider<Series>` | То же для сериалов |
+| `ICustomMetadataProvider<Episode>` | То же для эпизодов |
 
 ## Решение проблем
 
-1. **Проверьте логи Jellyfin** — ищите записи с префиксом `RussianMetadata:`
+1. **Проверьте логи Jellyfin** — ищите записи с префиксом `RussianMetadata:`, `RussianMetadata (Series):`, `RussianMetadata (Episode):`
 2. **TMDB не отвечает?** — настройте прокси, если TMDB заблокирован в вашем регионе
-3. **Русские данные не применяются?** — убедитесь, что у элемента есть IMDb ID (`ProviderIds.Imdb`)
-4. **Сборка не удаётся?** — проверьте, что установлен .NET 9.0 SDK
+3. **Русские данные не применяются?** — убедитесь, что плагин включён в **Metadata Downloaders** для нужной библиотеки (Dashboard → Libraries → ✏️ → Metadata Downloaders)
+4. **Пустые описания эпизодов / сломанные сезоны?** — обновите плагин до последней версии (v1.1+). При обновлении сделайте полное обновление метаданных для TV-библиотеки: Dashboard → Libraries → три точки → **Refresh Metadata** → **Replace all existing metadata**
+5. **Сборка не удаётся?** — проверьте, что установлен .NET 9.0 SDK
 
 ## Лицензия
 

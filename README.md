@@ -66,6 +66,30 @@ dotnet build -c Release
 
 > **Примечание:** TMDB не обязателен. Без API-ключа плагин использует Wikidata, который содержит русские названия и описания для большинства известных фильмов и сериалов.
 
+### Конфигурационный XML-файл
+
+Настройки также можно задать напрямую через XML-файл. Jellyfin автоматически создаёт его после первого запуска плагина по пути:
+
+```
+<папка_конфига>/plugins/configurations/RussianMetadata.xml
+```
+
+**Пример файла:**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <TmdbApiKey>ваш_ключ_TMDB</TmdbApiKey>
+  <EnableRussianTitles>true</EnableRussianTitles>
+  <EnableRussianOverviews>true</EnableRussianOverviews>
+  <ProxyUrl>http://proxy.example.com:3128</ProxyUrl>
+  <ProxyUsername>логин_прокси</ProxyUsername>
+  <ProxyPassword>пароль_прокси</ProxyPassword>
+</PluginConfiguration>
+```
+
+> Если файла нет — создайте его вручную или откройте **Dashboard → Plugins → Russian Metadata → Settings**, сохраните любые настройки — Jellyfin сам сгенерирует файл. После редактирования XML перезапустите Jellyfin, чтобы изменения применились.
+
 ## Как это работает
 
 ```

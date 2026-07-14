@@ -4,42 +4,90 @@
     <title>Russian Metadata</title>
 </head>
 <body>
-    <div style="padding: 20px;">
-        <h2>Russian Metadata Plugin</h2>
-        <p>Fetches Russian titles and descriptions from TMDB (via proxy) or Wikidata as fallback.</p>
-        
-        <h3>TMDB API</h3>
-        <label for="TmdbApiKey">TMDB API Key:</label>
-        <input id="TmdbApiKey" name="TmdbApiKey" type="text" is="emby-input" />
-        <div class="fieldDescription">Get your API key at <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org</a></div>
-        
-        <h3>Proxy (для TMDB)</h3>
-        <label for="ProxyUrl">Proxy URL:</label>
-        <input id="ProxyUrl" name="ProxyUrl" type="text" is="emby-input" placeholder="http://host:port" />
-        <div class="fieldDescription">Например: http://proxy.example.com:3128</div>
-        
-        <label for="ProxyUsername">Proxy Username:</label>
-        <input id="ProxyUsername" name="ProxyUsername" type="text" is="emby-input" />
-        
-        <label for="ProxyPassword">Proxy Password:</label>
-        <input id="ProxyPassword" name="ProxyPassword" type="password" is="emby-input" />
-        
-        <h3>Настройки</h3>
-        <label class="checkboxContainer">
-            <input id="EnableRussianTitles" name="EnableRussianTitles" type="checkbox" is="emby-checkbox" checked />
-            <span>Replace titles with Russian versions</span>
-        </label>
-        
-        <br/>
-        <label class="checkboxContainer">
-            <input id="EnableRussianOverviews" name="EnableRussianOverviews" type="checkbox" is="emby-checkbox" checked />
-            <span>Replace overviews with Russian descriptions</span>
-        </label>
-        
-        <br/>
-        <button is="emby-button" type="submit" class="raised button-submit" onclick="RussianMetadata.submit(this)">
-            <span>Save</span>
-        </button>
+    <div id="configPage" data-role="page" class="page type-interior pluginConfigurationPage configPage" data-require="emby-input,emby-button,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <h2>Russian Metadata Plugin</h2>
+                <p>Заменяет английские названия и описания фильмов и сериалов на русские через TMDB или Wikidata.</p>
+
+                <form class="configForm">
+                    <h3>TMDB API</h3>
+                    <label for="TmdbApiKey">TMDB API Key:</label>
+                    <input id="TmdbApiKey" name="TmdbApiKey" type="text" is="emby-input" />
+                    <div class="fieldDescription">
+                        Получить ключ: <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a>.
+                        Без ключа используется Wikidata (меньше данных, но бесплатно).
+                    </div>
+
+                    <h3>Proxy (для TMDB)</h3>
+                    <label for="ProxyUrl">Proxy URL:</label>
+                    <input id="ProxyUrl" name="ProxyUrl" type="text" is="emby-input" placeholder="http://host:port" />
+                    <div class="fieldDescription">Например: http://proxy.example.com:3128</div>
+
+                    <label for="ProxyUsername">Proxy Username:</label>
+                    <input id="ProxyUsername" name="ProxyUsername" type="text" is="emby-input" />
+
+                    <label for="ProxyPassword">Proxy Password:</label>
+                    <input id="ProxyPassword" name="ProxyPassword" type="password" is="emby-input" />
+
+                    <h3>Настройки</h3>
+                    <label class="checkboxContainer">
+                        <input id="EnableRussianTitles" name="EnableRussianTitles" type="checkbox" is="emby-checkbox" checked />
+                        <span>Заменять названия на русские</span>
+                    </label>
+
+                    <br/>
+                    <label class="checkboxContainer">
+                        <input id="EnableRussianOverviews" name="EnableRussianOverviews" type="checkbox" is="emby-checkbox" checked />
+                        <span>Заменять описания на русские</span>
+                    </label>
+
+                    <br/>
+                    <button is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Save</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+            var PluginConfig = {
+                pluginId: "a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b"
+            };
+
+            document.querySelector('.configPage')
+                .addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(PluginConfig.pluginId).then(function (config) {
+                        document.getElementById('TmdbApiKey').value = config.TmdbApiKey || '';
+                        document.getElementById('ProxyUrl').value = config.ProxyUrl || '';
+                        document.getElementById('ProxyUsername').value = config.ProxyUsername || '';
+                        document.getElementById('ProxyPassword').value = config.ProxyPassword || '';
+                        document.getElementById('EnableRussianTitles').checked = config.EnableRussianTitles !== false;
+                        document.getElementById('EnableRussianOverviews').checked = config.EnableRussianOverviews !== false;
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+            document.querySelector('.configForm')
+                .addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+
+                    ApiClient.getPluginConfiguration(PluginConfig.pluginId).then(function (config) {
+                        config.TmdbApiKey = document.getElementById('TmdbApiKey').value;
+                        config.ProxyUrl = document.getElementById('ProxyUrl').value;
+                        config.ProxyUsername = document.getElementById('ProxyUsername').value;
+                        config.ProxyPassword = document.getElementById('ProxyPassword').value;
+                        config.EnableRussianTitles = document.getElementById('EnableRussianTitles').checked;
+                        config.EnableRussianOverviews = document.getElementById('EnableRussianOverviews').checked;
+
+                        ApiClient.updatePluginConfiguration(PluginConfig.pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
+                    });
+
+                    e.preventDefault();
+                    return false;
+                });
+        </script>
     </div>
 </body>
 </html>

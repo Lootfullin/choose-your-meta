@@ -27,8 +27,11 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
     [GeneratedRegex(@"\b(tt\d{7,8})\b")]
     private static partial Regex ImdbIdRegex();
 
-    [GeneratedRegex(@"[Ss](\d+)[Ee](\d+)")]
+    [GeneratedRegex(@"[Ss](\d+)[.\s_-]*[Ee](\d+)")]
     private static partial Regex SeasonEpisodeRegex();
+
+    [GeneratedRegex(@"(?:^|\D)(\d+)[xX](\d+)(?:\D|$)")]
+    private static partial Regex SeasonEpisodeAltRegex();
 
     public RussianEpisodeProvider(ILogger<RussianEpisodeProvider> logger)
     {
@@ -138,11 +141,21 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
         episode = 0;
         if (string.IsNullOrEmpty(path)) return false;
 
+        // Try S01E01 / S01.E01 / S01 E01 / S01-E01
         var match = SeasonEpisodeRegex().Match(path);
         if (match.Success)
         {
             season = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
             episode = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+            return true;
+        }
+
+        // Try 1x01 format
+        var altMatch = SeasonEpisodeAltRegex().Match(path);
+        if (altMatch.Success)
+        {
+            season = int.Parse(altMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+            episode = int.Parse(altMatch.Groups[2].Value, CultureInfo.InvariantCulture);
             return true;
         }
 
@@ -168,7 +181,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
             httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
-            var detailsUrl = $"{TmdbApiBase}/tv/{seriesTmdbId}/season/{seasonNumber}/episode/{episodeNumber}?api_key={config.TmdbApiKey}&language=ru-RU";
+            var detailsUrl = $"{TmdbApiBase}/tv/{seriesTmdbId}/season/{seasonNumber}/episode/{episodeNumber}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU";
             _logger.LogInformation(
                 "RussianMetadata (Episode): TMDB URL (without key): {Url}",
                 detailsUrl.Replace(config.TmdbApiKey, "***"));
@@ -213,7 +226,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
 
             return changed;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(
                 ex,

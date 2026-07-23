@@ -41,14 +41,29 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
 
     public Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
     {
-        // Do NOT create a new Movie() here — Jellyfin may interpret a non-null
-        // Item with HasMetadata=false as a valid result and overwrite existing data.
-        // IMDb ID extraction and all other work is done in FetchAsync.
+        // Do NOT create a new Movie() with HasMetadata=false and Item!=null —
+        // Jellyfin may interpret that as a valid result and overwrite existing data.
+        // We always set HasMetadata=true when we have an IMDb ID to contribute.
         var result = new MetadataResult<Movie>();
 
+        string? imdbId = ExtractImdbId(info);
+
         _logger.LogInformation(
-            "RussianMetadata: GetMetadata — Name='{Name}'",
-            info.Name ?? "?");
+            "RussianMetadata: GetMetadata — Name='{Name}', ExtractedImdbId={ImdbId}",
+            info.Name ?? "?", imdbId ?? "N/A");
+
+        // Pass IMDb ID to Jellyfin so FetchAsync can find it in ProviderIds.
+        if (!string.IsNullOrEmpty(imdbId))
+        {
+            result.HasMetadata = true;
+            result.Item = new Movie();
+            result.Item.SetProviderId("Imdb", imdbId);
+
+            if (!string.IsNullOrEmpty(info.Name))
+            {
+                result.Item.Name = info.Name;
+            }
+        }
 
         return Task.FromResult(result);
     }
@@ -67,7 +82,7 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
             // Step 1: Find TMDB movie ID by IMDb ID
-            var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={config.TmdbApiKey}&external_source=imdb_id";
+            var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&external_source=imdb_id";
             _logger.LogInformation("RussianMetadata: TMDB find URL (without key): {Url}", findUrl.Replace(config.TmdbApiKey, "***"));
             _logger.LogInformation("RussianMetadata: TMDB find for {ImdbId}", imdbId);
 
@@ -91,7 +106,7 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
             }
 
             // Step 2: Fetch details in Russian
-            var detailsUrl = $"{TmdbApiBase}/movie/{movieRef.Id}?api_key={config.TmdbApiKey}&language=ru-RU";
+            var detailsUrl = $"{TmdbApiBase}/movie/{movieRef.Id}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU";
             _logger.LogInformation("RussianMetadata: TMDB details URL (without key): {Url}", detailsUrl.Replace(config.TmdbApiKey, "***"));
             _logger.LogInformation("RussianMetadata: TMDB details for ID {TmdbId}", movieRef.Id);
 
@@ -130,7 +145,7 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
             _logger.LogInformation("RussianMetadata: TMDB success for {ImdbId} -> {Title}", imdbId, movieDetails.Title);
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "RussianMetadata: TMDB failed for {ImdbId}, will fallback", imdbId);
             return false;
@@ -183,7 +198,7 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
 
             return changed;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "RussianMetadata: Wikidata error for {ImdbId}", imdbId);
             return false;
@@ -217,7 +232,24 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
 
     public async Task<ItemUpdateType> FetchAsync(Movie item, MetadataRefreshOptions options, CancellationToken cancellationToken)
     {
+        // Try to get IMDb ID from provider IDs
         if (!item.TryGetProviderId("Imdb", out var imdbId) || string.IsNullOrEmpty(imdbId))
+        {
+            _logger.LogInformation("RussianMetadata: No IMDb ID in ProviderIds for {Name}, trying path", item.Name);
+        }
+
+        // Fallback: extract IMDb ID from movie folder path (e.g., ".../tt0111161 The Shawshank Redemption/")
+        if (string.IsNullOrEmpty(imdbId) && !string.IsNullOrEmpty(item.Path))
+        {
+            var match = ImdbIdRegex().Match(item.Path);
+            if (match.Success)
+            {
+                imdbId = match.Groups[1].Value;
+                _logger.LogInformation("RussianMetadata: Extracted IMDb ID {ImdbId} from path '{Path}'", imdbId, item.Path);
+            }
+        }
+
+        if (string.IsNullOrEmpty(imdbId))
         {
             _logger.LogInformation("RussianMetadata: No IMDb ID for movie {Name}, skipping custom fetch", item.Name);
             return ItemUpdateType.None;
@@ -267,6 +299,15 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
         return ItemUpdateType.None;
     }
 
+    /// <summary>
+    /// Escape characters unsafe for SPARQL string literals (backslash, double-quote).
+    /// Does NOT URL-encode – the SPARQL query is URL-encoded once at the HTTP layer.
+    /// </summary>
+    private static string EscapeSparqlString(string s)
+    {
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+
     // ───── IMDb ID extraction ─────
 
     private string? ExtractImdbId(MovieInfo info)
@@ -295,16 +336,16 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
 
     private async Task<WikidataEntity?> FetchWikidataEntityByImdbId(string imdbId, CancellationToken cancellationToken)
     {
-        var handler = new HttpClientHandler();
-        using var httpClient = new HttpClient(handler, disposeHandler: true);
+        using var httpClient = _httpClientFactory.CreateClient("RussianMetadata");
         httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
         httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Jellyfin-RussianMetadata/1.0");
-        httpClient.Timeout = TimeSpan.FromSeconds(10);
+        httpClient.Timeout = TimeSpan.FromSeconds(30);
 
         // Fetch both RU and EN labels/descriptions in one query
+        var safeImdbId = EscapeSparqlString(imdbId);
         var sparqlQuery = $@"
 SELECT ?item ?ruLabel ?enLabel ?ruDescription ?enDescription WHERE {{
-  ?item wdt:P345 ""{imdbId}"".
+  ?item wdt:P345 ""{safeImdbId}"".
   OPTIONAL {{ ?item rdfs:label ?ruLabel. FILTER(LANG(?ruLabel) = ""ru"") }}
   OPTIONAL {{ ?item rdfs:label ?enLabel. FILTER(LANG(?enLabel) = ""en"") }}
   OPTIONAL {{ ?item schema:description ?ruDescription. FILTER(LANG(?ruDescription) = ""ru"") }}
@@ -335,7 +376,7 @@ LIMIT 1";
                 EnglishDescription = binding.EnDescription?.Value
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "RussianMetadata: Wikidata fetch error for {ImdbId}", imdbId);
             return null;
@@ -360,7 +401,7 @@ LIMIT 1";
                 httpClient.Timeout = TimeSpan.FromSeconds(5);
 
                 var query = Uri.EscapeDataString(searchInfo.Name);
-                var searchUrl = $"{TmdbApiBase}/search/movie?api_key={config.TmdbApiKey}&language=ru-RU&query={query}";
+                var searchUrl = $"{TmdbApiBase}/search/movie?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU&query={query}";
 
                 using var response = await httpClient.GetAsync(searchUrl, cancellationToken);
                 if (response.IsSuccessStatusCode)
@@ -386,7 +427,7 @@ LIMIT 1";
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogWarning(ex, "RussianMetadata: TMDB search failed, fallback to Wikidata");
             }
@@ -399,13 +440,13 @@ LIMIT 1";
             httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Jellyfin-RussianMetadata/1.0");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
-            var query = Uri.EscapeDataString(searchInfo.Name);
+            var safeName = EscapeSparqlString(searchInfo.Name);
             var sparqlQuery = $@"
 SELECT ?item ?itemLabel ?description WHERE {{
   ?item wdt:P31 wd:Q11424.
   ?item rdfs:label ?itemLabel.
   FILTER(LANG(?itemLabel) = ""ru"")
-  FILTER(CONTAINS(LCASE(?itemLabel), LCASE(""{query}"")))
+  FILTER(CONTAINS(LCASE(?itemLabel), LCASE(""{safeName}"")))
 }}
 LIMIT 10";
             var url = $"{WikidataSparqlEndpoint}?format=json&query={Uri.EscapeDataString(sparqlQuery)}";
@@ -430,7 +471,7 @@ LIMIT 10";
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "RussianMetadata: Wikidata search error");
         }

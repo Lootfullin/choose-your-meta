@@ -83,7 +83,17 @@ public sealed class MovieTextLocalizationTests
         Assert.True(configuration.EnableRussianGenres);
         Assert.True(configuration.EnableRussianStudios);
         Assert.True(configuration.EnableRussianPeople);
-        Assert.True(configuration.EnableRussianPosters);
-        Assert.True(configuration.EnableRussianLogos);
+        Assert.Equal(
+            ArtworkLanguagePreference.EnglishFirst,
+            configuration.ForeignMoviePosterPreference);
+        Assert.Equal(
+            ArtworkLanguagePreference.EnglishFirst,
+            configuration.ForeignMovieLogoPreference);
+        Assert.Equal(
+            ArtworkLanguagePreference.RussianFirst,
+            configuration.RussianMoviePosterPreference);
+        Assert.Equal(
+            ArtworkLanguagePreference.RussianFirst,
+            configuration.RussianMovieLogoPreference);
     }
 }

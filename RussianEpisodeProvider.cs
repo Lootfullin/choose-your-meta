@@ -38,7 +38,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
         _logger = logger;
     }
 
-    public string Name => "Russian Metadata";
+    public string Name => "Choose your Meta!";
 
     public Task<MetadataResult<Episode>> GetMetadata(EpisodeInfo info, CancellationToken cancellationToken)
     {

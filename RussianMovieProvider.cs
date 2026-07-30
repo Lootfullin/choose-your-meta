@@ -38,7 +38,7 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
         _logger = logger;
     }
 
-    public string Name => "Russian Metadata";
+    public string Name => "Choose your Meta!";
 
     public async Task<MetadataResult<Movie>> GetMetadata(
         MovieInfo info,

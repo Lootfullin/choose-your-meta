@@ -28,6 +28,6 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
-          name: RussianMetadata-1.3.0
+          name: ChooseYourMeta-1.3.0
           path: bin/Release/net9.0/RussianMetadata.dll
           if-no-files-found: error

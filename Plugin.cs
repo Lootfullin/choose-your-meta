@@ -11,9 +11,9 @@ namespace RussianMetadata;
 
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
-    public override string Name => "Russian Metadata";
+    public override string Name => "Choose your Meta!";
 
-    public override string Description => "Prefers Russian movie metadata, posters, and logos, with standard Jellyfin providers as fallback";
+    public override string Description => "Choose RU/EN metadata, posters, and logos separately for Russian and foreign movies";
 
     public override Guid Id => Guid.Parse("a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b");
 
@@ -31,7 +31,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         [
             new PluginPageInfo
             {
-                Name = "Russian Metadata",
+                Name = "Choose your Meta!",
                 EmbeddedResourcePath = string.Format(
                     CultureInfo.InvariantCulture,
                     "{0}.Configuration.configPage.html",

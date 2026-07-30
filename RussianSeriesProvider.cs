@@ -37,7 +37,7 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
         _logger = logger;
     }
 
-    public string Name => "Russian Metadata";
+    public string Name => "Choose your Meta!";
 
     public Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
     {

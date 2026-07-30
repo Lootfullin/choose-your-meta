@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Russian Metadata</title>
+    <title>Choose your Meta!</title>
 </head>
 <body>
-    <div id="configPage" data-role="page" class="page type-interior pluginConfigurationPage configPage" data-require="emby-input,emby-button,emby-checkbox">
+    <div id="configPage" data-role="page" class="page type-interior pluginConfigurationPage configPage" data-require="emby-input,emby-button,emby-checkbox,emby-select">
         <div data-role="content">
             <div class="content-primary">
-                <h2>Russian Metadata Plugin</h2>
-                <p>Сначала загружает русские метаданные. Английский текст и обычные изображения остаются резервом, если русского варианта нет.</p>
+                <h2>Choose your Meta!</h2>
+                <p>Выбирайте язык текстовых метаданных и изображений отдельно для российских и зарубежных фильмов.</p>
 
                 <form class="configForm">
                     <h3>TMDB API</h3>
@@ -30,7 +30,7 @@
                     <label for="ProxyPassword">Proxy Password:</label>
                     <input id="ProxyPassword" name="ProxyPassword" type="password" is="emby-input" />
 
-                    <h3>Настройки</h3>
+                    <h3>Текстовые метаданные</h3>
                     <label class="checkboxContainer">
                         <input id="EnableRussianTitles" name="EnableRussianTitles" type="checkbox" is="emby-checkbox" checked />
                         <span>Заменять названия на русские</span>
@@ -67,22 +67,46 @@
                     </label>
 
                     <h3>Изображения фильмов</h3>
-                    <label class="checkboxContainer">
-                        <input id="EnableRussianPosters" name="EnableRussianPosters" type="checkbox" is="emby-checkbox" checked />
-                        <span>Предпочитать постеры TMDB с языковой меткой «ru»</span>
-                    </label>
+                    <h4>Зарубежные фильмы</h4>
+                    <label for="ForeignMoviePosterPreference">Постеры:</label>
+                    <select id="ForeignMoviePosterPreference" name="ForeignMoviePosterPreference" is="emby-select">
+                        <option value="1">Сначала английские, затем русские (EN → RU)</option>
+                        <option value="0">Сначала русские, затем английские (RU → EN)</option>
+                        <option value="2">Не загружать этим плагином</option>
+                    </select>
 
                     <br/>
-                    <label class="checkboxContainer">
-                        <input id="EnableRussianLogos" name="EnableRussianLogos" type="checkbox" is="emby-checkbox" checked />
-                        <span>Предпочитать логотипы TMDB с языковой меткой «ru»</span>
-                    </label>
+                    <label for="ForeignMovieLogoPreference">Логотипы:</label>
+                    <select id="ForeignMovieLogoPreference" name="ForeignMovieLogoPreference" is="emby-select">
+                        <option value="1">Сначала английские, затем русские (EN → RU)</option>
+                        <option value="0">Сначала русские, затем английские (RU → EN)</option>
+                        <option value="2">Не загружать этим плагином</option>
+                    </select>
+
+                    <h4>Российские фильмы</h4>
+                    <label for="RussianMoviePosterPreference">Постеры:</label>
+                    <select id="RussianMoviePosterPreference" name="RussianMoviePosterPreference" is="emby-select">
+                        <option value="0">Сначала русские, затем английские (RU → EN)</option>
+                        <option value="1">Сначала английские, затем русские (EN → RU)</option>
+                        <option value="2">Не загружать этим плагином</option>
+                    </select>
+
+                    <br/>
+                    <label for="RussianMovieLogoPreference">Логотипы:</label>
+                    <select id="RussianMovieLogoPreference" name="RussianMovieLogoPreference" is="emby-select">
+                        <option value="0">Сначала русские, затем английские (RU → EN)</option>
+                        <option value="1">Сначала английские, затем русские (EN → RU)</option>
+                        <option value="2">Не загружать этим плагином</option>
+                    </select>
 
                     <div class="fieldDescription">
-                        Для русских изображений требуется TMDB API key.
+                        Для изображений требуется TMDB API key.
+                        Российский фильм определяется по стране производства RU;
+                        если страна не заполнена — по исходному языку ru.
+                        В каждой паре второй язык используется как резерв.
                         Для каждого поля английское значение сохраняется, если русский вариант не найден.
-                        Для изображений без варианта «ru» Jellyfin использует следующий включённый загрузчик.
-                        Фоны плагин не изменяет. Чтобы заменить уже сохранённые картинки,
+                        Локальные изображения имеют приоритет, фоны плагин не изменяет.
+                        Чтобы заменить уже сохранённые картинки,
                         обновите фильм с включённой заменой изображений.
                     </div>
 
@@ -113,8 +137,10 @@
                         document.getElementById('EnableRussianGenres').checked = config.EnableRussianGenres !== false;
                         document.getElementById('EnableRussianStudios').checked = config.EnableRussianStudios !== false;
                         document.getElementById('EnableRussianPeople').checked = config.EnableRussianPeople !== false;
-                        document.getElementById('EnableRussianPosters').checked = config.EnableRussianPosters !== false;
-                        document.getElementById('EnableRussianLogos').checked = config.EnableRussianLogos !== false;
+                        document.getElementById('ForeignMoviePosterPreference').value = config.ForeignMoviePosterPreference == null ? 1 : config.ForeignMoviePosterPreference;
+                        document.getElementById('ForeignMovieLogoPreference').value = config.ForeignMovieLogoPreference == null ? 1 : config.ForeignMovieLogoPreference;
+                        document.getElementById('RussianMoviePosterPreference').value = config.RussianMoviePosterPreference == null ? 0 : config.RussianMoviePosterPreference;
+                        document.getElementById('RussianMovieLogoPreference').value = config.RussianMovieLogoPreference == null ? 0 : config.RussianMovieLogoPreference;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -134,8 +160,10 @@
                         config.EnableRussianGenres = document.getElementById('EnableRussianGenres').checked;
                         config.EnableRussianStudios = document.getElementById('EnableRussianStudios').checked;
                         config.EnableRussianPeople = document.getElementById('EnableRussianPeople').checked;
-                        config.EnableRussianPosters = document.getElementById('EnableRussianPosters').checked;
-                        config.EnableRussianLogos = document.getElementById('EnableRussianLogos').checked;
+                        config.ForeignMoviePosterPreference = parseInt(document.getElementById('ForeignMoviePosterPreference').value, 10);
+                        config.ForeignMovieLogoPreference = parseInt(document.getElementById('ForeignMovieLogoPreference').value, 10);
+                        config.RussianMoviePosterPreference = parseInt(document.getElementById('RussianMoviePosterPreference').value, 10);
+                        config.RussianMovieLogoPreference = parseInt(document.getElementById('RussianMovieLogoPreference').value, 10);
 
                         ApiClient.updatePluginConfiguration(PluginConfig.pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
                     });

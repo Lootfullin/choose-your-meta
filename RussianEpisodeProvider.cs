@@ -38,7 +38,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
         _logger = logger;
     }
 
-    public string Name => "Russian Metadata";
+    public string Name => "Choose your Meta!";
 
     public Task<MetadataResult<Episode>> GetMetadata(EpisodeInfo info, CancellationToken cancellationToken)
     {
@@ -62,7 +62,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
 
         // Need series TMDB ID + season/episode numbers
         int seasonNumber, episodeNumber;
-        
+
         if (item.ParentIndexNumber.HasValue && item.IndexNumber.HasValue)
         {
             seasonNumber = item.ParentIndexNumber.Value;
@@ -108,10 +108,12 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
         }
 
         var config = Plugin.Configuration;
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
 
-        if (string.IsNullOrEmpty(config.TmdbApiKey))
+        if (string.IsNullOrEmpty(tmdbApiKey))
         {
-            _logger.LogWarning("RussianMetadata (Episode): No TMDB API key configured, skipping");
+            _logger.LogWarning(
+                "RussianMetadata (Episode): Jellyfin TMDB integration is unavailable, skipping");
             return ItemUpdateType.None;
         }
 
@@ -120,6 +122,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
             seasonNumber,
             episodeNumber,
             config,
+            tmdbApiKey,
             item,
             cancellationToken);
 
@@ -167,6 +170,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
         int seasonNumber,
         int episodeNumber,
         Configuration.PluginConfiguration config,
+        string tmdbApiKey,
         Episode item,
         CancellationToken cancellationToken)
     {
@@ -181,10 +185,10 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
             httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
-            var detailsUrl = $"{TmdbApiBase}/tv/{seriesTmdbId}/season/{seasonNumber}/episode/{episodeNumber}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU";
+            var detailsUrl = $"{TmdbApiBase}/tv/{seriesTmdbId}/season/{seasonNumber}/episode/{episodeNumber}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU";
             _logger.LogInformation(
                 "RussianMetadata (Episode): TMDB URL (without key): {Url}",
-                detailsUrl.Replace(config.TmdbApiKey, "***"));
+                detailsUrl.Replace(tmdbApiKey, "***"));
 
             using var response = await httpClient.GetAsync(detailsUrl, cancellationToken);
             _logger.LogInformation(

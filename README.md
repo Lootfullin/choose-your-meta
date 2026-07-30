@@ -1,19 +1,31 @@
-# Russian Metadata for Jellyfin
+# Choose your Meta! for Jellyfin
 
-![Jellyfin](https://img.shields.io/badge/Jellyfin-10.11+-00A4DC?style=flat-square&logo=jellyfin&logoColor=white)
+![Jellyfin](https://img.shields.io/badge/Jellyfin-10.11.11-00A4DC?style=flat-square&logo=jellyfin&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
-Плагин для Jellyfin, который автоматически заменяет английские названия и описания фильмов и сериалов на русские. Использует **TMDB** (основной источник) и **Wikidata** (резервный).
+Плагин для Jellyfin, который позволяет независимо выбирать язык метаданных и
+изображений. Текст локализуется на русский по отдельным полям, а для постеров и
+логотипов можно назначить приоритет `RU → EN` или `EN → RU` отдельно российским
+и зарубежным фильмам. Использует **TMDB**, **Fanart.tv** и **Wikidata**.
 
 ---
 
 ## Возможности
 
 - **🇷🇺 Русские названия и описания** — фильмы, сериалы и эпизоды отображаются на русском языке
-- **Два источника данных** — TMDB (богатые метаданные, поддержка прокси), Wikidata (SPARQL) как резерв
+- **Русские данные о фильме** — слоган, жанры, студии, актёры, режиссёры и сценаристы
+- **Fallback отдельно для каждого поля** — английский текст используется только при отсутствии русского
+- **Разные правила изображений** — российским и зарубежным фильмам назначаются собственные языки постеров и логотипов
+- **RU → EN или EN → RU** — второй язык используется, если у источника нет изображения предпочитаемого языка
+- **Локальные изображения первыми** — обычное сканирование Jellyfin не заменяет найденные рядом с фильмом постеры и логотипы
+- **Коллекции** — русское название/описание и независимый язык постера и логотипа
+- **Без отдельной регистрации TMDB** — используется API-ключ встроенного TheMovieDB из установленной версии Jellyfin
+- **Настройка библиотек одной кнопкой** — плагин сам включает и поднимает свои загрузчики
+- **Фоны без изменений** — плагин не вмешивается в загрузку фоновых изображений
+- **Три источника данных** — TMDB для метаданных и постеров, Fanart.tv для логотипов коллекций, Wikidata как резерв
 - **Гибкая настройка** — включение/отключение замены названий и описаний независимо друг через друга
-- **Прокси** — опциональный HTTP-прокси для доступа к TMDB (полезно в регионах, где TMDB заблокирован)
+- **Прокси** — опциональный HTTP-прокси для доступа к TMDB и Fanart.tv
 - **Умный каскад** — сначала TMDB (самые полные данные), затем Wikidata
 - **Подробное логирование** — диагностические сообщения с префиксом `RussianMetadata:`
 - **Извлечение IMDb ID** — автоматически находит IMDb ID из названий файлов и папок
@@ -22,39 +34,33 @@
 
 | Компонент | Версия |
 |-----------|--------|
-| Jellyfin  | 10.11.x |
+| Jellyfin  | 10.11.11 (другие версии требуют проверки совместимости) |
 | .NET Runtime | 9.0+ (входит в состав Jellyfin 10.11) |
-| TMDB API key | [Бесплатно](https://www.themoviedb.org/settings/api) (необязательно, Wikidata работает без ключа) |
+| TheMovieDB | Встроенный плагин Jellyfin 10.11.11 |
+| Fanart | Официальный плагин Jellyfin; нужен только для логотипов коллекций |
 
 ## Установка
 
 ### Вариант 1: Вручную
 
-1. Скачайте `RussianMetadata.dll` из [Releases](https://github.com/Opiumforme/jellifin-russian-metadata/releases)
+1. Скачайте `RussianMetadata.dll` из [Releases](https://github.com/Lootfullin/choose-your-meta/releases)
 2. Скопируйте в директорию плагинов Jellyfin:
    ```
    /path/to/jellyfin/plugins/RussianMetadata/RussianMetadata.dll
    ```
 3. Перезапустите Jellyfin
-4. Перейдите в **Dashboard → Plugins → Russian Metadata** и настройте (TMDB API key, прокси, включить названия/описания)
-5. **Назначьте Russian Metadata загрузчиком метаданных для библиотек** — без этого плагин не будет обрабатывать медиа:
-
-   **Для фильмов:** Dashboard → Libraries → ваша библиотека фильмов → ✏️ → **Metadata Downloaders** → выберите `Russian Metadata` → переместите наверх списка ✅
-
-   **Для ТВ-передач:** Dashboard → Libraries → ваша библиотека ТВ → ✏️ → **Metadata Downloaders** → выберите `Russian Metadata` → переместите наверх списка ✅
-
-   > **Зачем это нужно?** Jellyfin вызывает провайдеров метаданных для каждой библиотеки только если они включены в её Metadata Downloaders. Без этого шага плагин не будет обрабатывать фильмы и сериалы.
-   > Приоритет: переместите `Russian Metadata` наверх, чтобы он обрабатывался первым.
-
-6. **Обновите метаданные** после настройки:
+4. Для логотипов коллекций установите официальный **Fanart** из каталога плагинов Jellyfin и перезапустите сервер. Его API key настраивать не нужно.
+5. Перейдите в **Dashboard → Plugins → Choose your Meta!** и настройте текст и изображения. Поле собственного TMDB API key оставьте пустым.
+6. Нажмите **Настроить библиотеки автоматически**. Плагин включит себя для фильмов, сериалов, эпизодов и коллекций и поставит выше TheMovieDB, сохранив остальные загрузчики.
+7. **Обновите метаданные** после настройки:
    - 📺 TV библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** → **Refresh**
-   - 🎬 Movies библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** → **Refresh**
+   - 🎬 Movies библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** и, если нужно сменить постеры/логотипы, ✅ **Replace existing images** → **Refresh**
 
 ### Вариант 2: Сборка из исходников
 
 ```bash
-git clone https://github.com/Opiumforme/jellifin-russian-metadata.git
-cd jellifin-russian-metadata/RussianMetadata
+git clone https://github.com/Lootfullin/choose-your-meta.git
+cd choose-your-meta
 dotnet build -c Release
 ```
 
@@ -62,18 +68,32 @@ dotnet build -c Release
 
 ## Настройка
 
-**Dashboard → Plugins → Russian Metadata → Settings:**
+**Dashboard → Plugins → Choose your Meta! → Settings:**
 
 | Параметр | Описание |
 |----------|----------|
-| **TMDB API Key** | Ваш TMDB API ключ (v3 auth). [Получить](https://www.themoviedb.org/settings/api) |
+| **TMDB API Key** | Необязательный аварийный override; обычно оставляется пустым |
 | **Enable Russian Titles** | Заменять английские названия на русские |
 | **Enable Russian Overviews** | Заменять английские описания на русские |
+| **Enable Russian Taglines** | Использовать русский слоган, если он существует |
+| **Enable Russian Genres** | Загружать русские названия жанров |
+| **Enable Russian Studios** | Использовать русское название студии, если оно существует |
+| **Enable Russian People** | Использовать русские имена актёров и съёмочной группы, если они существуют |
+| **Зарубежные фильмы → Постеры** | `EN → RU`, `RU → EN` или отключено |
+| **Зарубежные фильмы → Логотипы** | `EN → RU`, `RU → EN` или отключено |
+| **Российские фильмы → Постеры** | `RU → EN`, `EN → RU` или отключено |
+| **Российские фильмы → Логотипы** | `RU → EN`, `EN → RU` или отключено |
+| **Коллекции → Постеры** | `EN → RU`, `RU → EN` или отключено |
+| **Коллекции → Логотипы** | `EN → RU`, `RU → EN` или отключено; источник Fanart.tv |
 | **Proxy URL** | URL HTTP-прокси (например `http://proxy.example.com:3128`) |
 | **Proxy Username** | Имя пользователя для прокси (опционально) |
 | **Proxy Password** | Пароль для прокси (опционально) |
 
-> **Примечание:** TMDB не обязателен. Без API-ключа плагин использует Wikidata, который содержит русские названия и описания для большинства известных фильмов и сериалов.
+> **Примечание:** отдельный API-ключ не требуется. Choose your Meta! извлекает ключ из встроенного TheMovieDB текущей версии Jellyfin. Собственный ключ остаётся резервом на случай изменения внутренней интеграции.
+
+TMDB предоставляет коллекциям постеры и фоны. Логотипы коллекций Choose your
+Meta! получает с Fanart.tv через официальный плагин Fanart для Jellyfin.
+Отдельно регистрировать API-ключ Fanart.tv не требуется.
 
 ### Конфигурационный XML-файл
 
@@ -88,16 +108,26 @@ dotnet build -c Release
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
 <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
-  <TmdbApiKey>ваш_ключ_TMDB</TmdbApiKey>
+  <TmdbApiKey />
   <EnableRussianTitles>true</EnableRussianTitles>
   <EnableRussianOverviews>true</EnableRussianOverviews>
+  <EnableRussianTaglines>true</EnableRussianTaglines>
+  <EnableRussianGenres>true</EnableRussianGenres>
+  <EnableRussianStudios>true</EnableRussianStudios>
+  <EnableRussianPeople>true</EnableRussianPeople>
+  <ForeignMoviePosterPreference>EnglishFirst</ForeignMoviePosterPreference>
+  <ForeignMovieLogoPreference>EnglishFirst</ForeignMovieLogoPreference>
+  <RussianMoviePosterPreference>RussianFirst</RussianMoviePosterPreference>
+  <RussianMovieLogoPreference>RussianFirst</RussianMovieLogoPreference>
+  <CollectionPosterPreference>EnglishFirst</CollectionPosterPreference>
+  <CollectionLogoPreference>EnglishFirst</CollectionLogoPreference>
   <ProxyUrl>http://proxy.example.com:3128</ProxyUrl>
   <ProxyUsername>логин_прокси</ProxyUsername>
   <ProxyPassword>пароль_прокси</ProxyPassword>
 </PluginConfiguration>
 ```
 
-> Если файла нет — создайте его вручную или откройте **Dashboard → Plugins → Russian Metadata → Settings**, сохраните любые настройки — Jellyfin сам сгенерирует файл. После редактирования XML перезапустите Jellyfin, чтобы изменения применились.
+> Если файла нет — создайте его вручную или откройте **Dashboard → Plugins → Choose your Meta! → Settings**, сохраните любые настройки — Jellyfin сам сгенерирует файл. После редактирования XML перезапустите Jellyfin, чтобы изменения применились.
 
 ## Как это работает
 
@@ -132,8 +162,8 @@ dotnet build -c Release
 # Требуется: .NET 9.0 SDK
 # Скачать: https://dotnet.microsoft.com/download
 
-git clone https://github.com/Opiumforme/jellifin-russian-metadata.git
-cd jellifin-russian-metadata/RussianMetadata
+git clone https://github.com/Lootfullin/choose-your-meta.git
+cd choose-your-meta
 
 # Сборка
 dotnet build
@@ -153,6 +183,12 @@ RussianMetadata/
 │   └── configPage.html           # Веб-интерфейс в Dashboard
 ├── Plugin.cs                     # Точка входа плагина
 ├── RussianMovieProvider.cs       # Провайдер метаданных для фильмов
+├── RussianMovieImageProvider.cs  # Политики RU/EN для изображений фильмов
+├── ChooseYourMetaBoxSetProvider.cs       # Метаданные коллекций
+├── ChooseYourMetaBoxSetImageProvider.cs  # Постеры и логотипы коллекций
+├── FanartApiKeyResolver.cs               # Интеграция с официальным Fanart
+├── LibraryConfigurationService.cs        # Автонастройка библиотек
+├── ChooseYourMetaController.cs           # Административный API
 ├── RussianSeriesProvider.cs      # Провайдер метаданных для сериалов
 ├── RussianEpisodeProvider.cs     # Провайдер метаданных для эпизодов
 ├── RussianMetadata.csproj        # Файл проекта .NET
@@ -167,7 +203,7 @@ RussianMetadata/
 | `IRemoteMetadataProvider<Movie, MovieInfo>` | Удалённый провайдер для фильмов |
 | `IRemoteMetadataProvider<Series, SeriesInfo>` | Удалённый провайдер для сериалов |
 | `IRemoteMetadataProvider<Episode, EpisodeInfo>` | Удалённый провайдер для эпизодов |
-| `ICustomMetadataProvider<Movie>` | Применяет русские данные после всех провайдеров |
+| `IRemoteMetadataProvider<Movie, MovieInfo>` | Возвращает полный русский результат первым; следующие провайдеры заполняют пропуски |
 | `ICustomMetadataProvider<Series>` | То же для сериалов |
 | `ICustomMetadataProvider<Episode>` | То же для эпизодов |
 
@@ -181,6 +217,24 @@ RussianMetadata/
 6. **Сборка не удаётся?** — проверьте, что установлен .NET 9.0 SDK
 
 ## Changelog
+
+### v1.3.0
+
+- Фильмы теперь локализуются по отдельным полям, а не по принципу «успешен весь источник или нет»
+- Добавлены русские слоганы, жанры, студии, актёры, режиссёры и сценаристы
+- Русские подписи людей и компаний пакетно запрашиваются из Wikidata по TMDB ID
+- Английские значения остаются fallback, когда русская подпись отсутствует
+- Добавлен отдельный загрузчик постеров и логотипов TMDB с меткой `ru`
+- Добавлены отдельные правила `RU → EN` / `EN → RU` для российских и зарубежных фильмов
+- Российские фильмы определяются по стране производства `RU`, затем по исходному языку `ru`
+- Убрана обязательная регистрация собственного TMDB API key: используется ключ встроенного TheMovieDB Jellyfin
+- Добавлена настройка библиотек одной кнопкой с сохранением остальных провайдеров
+- Добавлены русские метаданные и языковой приоритет постеров для коллекций
+- Добавлены логотипы коллекций с Fanart.tv и отдельный приоритет `RU → EN` / `EN → RU`
+- Плагин переименован в Choose your Meta!
+- Фоновые изображения не изменяются
+- Добавлены автоматические регрессионные тесты
+- Обновлена совместимость до Jellyfin 10.11.11
 
 ### v1.2.0 (2026-07-23)
 

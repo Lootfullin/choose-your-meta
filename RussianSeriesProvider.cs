@@ -37,7 +37,7 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
         _logger = logger;
     }
 
-    public string Name => "Russian Metadata";
+    public string Name => "Choose your Meta!";
 
     public Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
     {
@@ -116,12 +116,19 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
         var tempResult = new MetadataResult<Series>();
         bool tmdbSuccess = false;
         bool wikidataSuccess = false;
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
 
         // Step 1: Try TMDB
-        if (!string.IsNullOrEmpty(config.TmdbApiKey))
+        if (!string.IsNullOrEmpty(tmdbApiKey))
         {
             _logger.LogInformation("RussianMetadata (Series): FetchAsync Step 1 — Trying TMDB for {Name}", seriesName);
-            tmdbSuccess = await TryTmdbSeries(seriesName, imdbId, config, tempResult, cancellationToken);
+            tmdbSuccess = await TryTmdbSeries(
+                seriesName,
+                imdbId,
+                config,
+                tmdbApiKey,
+                tempResult,
+                cancellationToken);
         }
 
         // Step 2: Wikidata by IMDb ID
@@ -159,7 +166,11 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
         return ItemUpdateType.None;
     }
 
-    private async Task<bool> TryTmdbSeries(string name, string? imdbId, Configuration.PluginConfiguration config,
+    private async Task<bool> TryTmdbSeries(
+        string name,
+        string? imdbId,
+        Configuration.PluginConfiguration config,
+        string tmdbApiKey,
         MetadataResult<Series> result, CancellationToken cancellationToken)
     {
         _logger.LogInformation("RussianMetadata (Series): Trying TMDB for {Name}", name);
@@ -176,8 +187,8 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             // Path A: Find by IMDb ID
             if (!string.IsNullOrEmpty(imdbId))
             {
-                var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&external_source=imdb_id";
-                _logger.LogInformation("RussianMetadata (Series): TMDB find URL (without key): {Url}", findUrl.Replace(config.TmdbApiKey, "***"));
+                var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
+                _logger.LogInformation("RussianMetadata (Series): TMDB find URL (without key): {Url}", findUrl.Replace(tmdbApiKey, "***"));
                 _logger.LogInformation("RussianMetadata (Series): TMDB find for {ImdbId}", imdbId);
 
                 using var findResponse = await httpClient.GetAsync(findUrl, cancellationToken);
@@ -200,8 +211,8 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             if (tmdbId == null && !string.IsNullOrEmpty(name))
             {
                 var query = Uri.EscapeDataString(name);
-                var searchUrl = $"{TmdbApiBase}/search/tv?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU&query={query}";
-                _logger.LogInformation("RussianMetadata (Series): TMDB search URL (without key): {Url}", searchUrl.Replace(config.TmdbApiKey, "***"));
+                var searchUrl = $"{TmdbApiBase}/search/tv?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU&query={query}";
+                _logger.LogInformation("RussianMetadata (Series): TMDB search URL (without key): {Url}", searchUrl.Replace(tmdbApiKey, "***"));
                 _logger.LogInformation("RussianMetadata (Series): TMDB search by name: {Name}", name);
 
                 using var searchResponse = await httpClient.GetAsync(searchUrl, cancellationToken);
@@ -233,8 +244,8 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             }
 
             // Step 2: Fetch details in Russian
-            var detailsUrl = $"{TmdbApiBase}/tv/{tmdbId}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU";
-            _logger.LogInformation("RussianMetadata (Series): TMDB details URL (without key): {Url}", detailsUrl.Replace(config.TmdbApiKey, "***"));
+            var detailsUrl = $"{TmdbApiBase}/tv/{tmdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU";
+            _logger.LogInformation("RussianMetadata (Series): TMDB details URL (without key): {Url}", detailsUrl.Replace(tmdbApiKey, "***"));
             _logger.LogInformation("RussianMetadata (Series): TMDB details for ID {TmdbId}", tmdbId);
 
             using var detailsResponse = await httpClient.GetAsync(detailsUrl, cancellationToken);
@@ -662,9 +673,10 @@ LIMIT 1";
         var results = new List<RemoteSearchResult>();
 
         var config = Plugin.Configuration;
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
 
         // Try TMDB search first
-        if (!string.IsNullOrEmpty(config.TmdbApiKey))
+        if (!string.IsNullOrEmpty(tmdbApiKey))
         {
             try
             {
@@ -673,7 +685,7 @@ LIMIT 1";
                 httpClient.Timeout = TimeSpan.FromSeconds(5);
 
                 var query = Uri.EscapeDataString(searchInfo.Name);
-                var searchUrl = $"{TmdbApiBase}/search/tv?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU&query={query}";
+                var searchUrl = $"{TmdbApiBase}/search/tv?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU&query={query}";
 
                 using var response = await httpClient.GetAsync(searchUrl, cancellationToken);
                 if (response.IsSuccessStatusCode)

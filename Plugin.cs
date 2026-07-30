@@ -11,9 +11,10 @@ namespace RussianMetadata;
 
 public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
-    public override string Name => "Russian Metadata";
+    public override string Name => "Choose your Meta!";
 
-    public override string Description => "Fetches Russian titles and overviews from TMDB (or Wikidata) for movies and TV series";
+    public override string Description =>
+        "Choose RU/EN metadata and artwork for movies and collections using Jellyfin's TMDB and Fanart integrations";
 
     public override Guid Id => Guid.Parse("a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b");
 
@@ -31,7 +32,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         [
             new PluginPageInfo
             {
-                Name = "Russian Metadata",
+                Name = "Choose your Meta!",
                 EmbeddedResourcePath = string.Format(
                     CultureInfo.InvariantCulture,
                     "{0}.Configuration.configPage.html",

@@ -12,6 +12,8 @@ obj/
 # Build results
 [Dd]ebug/
 [Rr]elease/
+artifacts/
+publish/
 x64/
 x86/
 [Ww][Ii][Nn]32/
@@ -22,6 +24,7 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+.smoke-runtime/
 
 # NuGet
 *.nuget.props

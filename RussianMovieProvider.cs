@@ -46,39 +46,58 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
     {
         var result = new MetadataResult<Movie>();
         string? imdbId = ExtractImdbId(info);
+        int? tmdbId = MovieLookup.ExtractTmdbId(info.ProviderIds);
+        var lookup = MovieLookup.Parse(info.Name, info.Year);
 
         _logger.LogInformation(
-            "RussianMetadata: GetMetadata — Name='{Name}', ExtractedImdbId={ImdbId}",
-            info.Name ?? "?", imdbId ?? "N/A");
-
-        if (string.IsNullOrEmpty(imdbId))
-        {
-            return result;
-        }
+            "ChooseYourMeta: GetMetadata — Name='{Name}', TmdbId={TmdbId}, ImdbId={ImdbId}, SearchName='{SearchName}', Year={Year}",
+            info.Name ?? "?",
+            tmdbId?.ToString(CultureInfo.InvariantCulture) ?? "N/A",
+            imdbId ?? "N/A",
+            lookup.Name,
+            lookup.Year?.ToString(CultureInfo.InvariantCulture) ?? "N/A");
 
         result.Item = new Movie();
-        result.Item.SetProviderId("Imdb", imdbId);
+        if (!string.IsNullOrEmpty(imdbId))
+        {
+            result.Item.SetProviderId("Imdb", imdbId);
+        }
+
         result.ResultLanguage = "ru";
 
         var config = Plugin.Configuration;
         var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
+        bool tmdbSuccess = false;
         if (!string.IsNullOrEmpty(tmdbApiKey))
         {
-            await TryTmdbMovie(
+            tmdbSuccess = await TryTmdbMovie(
+                tmdbId,
                 imdbId,
+                lookup,
                 config,
                 tmdbApiKey,
                 result,
                 cancellationToken);
+
+            imdbId = result.Item.GetProviderId("Imdb") ?? imdbId;
         }
 
         // Wikidata is a field-level fallback. For example, TMDB can have a
         // Russian overview but leave the localized title in English.
-        await TryWikidata(
-            imdbId,
-            config,
-            result,
-            cancellationToken);
+        bool wikidataSuccess = false;
+        if (!string.IsNullOrEmpty(imdbId))
+        {
+            wikidataSuccess = await TryWikidata(
+                imdbId,
+                config,
+                result,
+                cancellationToken);
+        }
+
+        if (!tmdbSuccess && !wikidataSuccess)
+        {
+            return new MetadataResult<Movie>();
+        }
 
         // Keep the lookup name only when neither Russian source has a title.
         // The next metadata provider can still fill every missing field.
@@ -93,12 +112,19 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
     }
 
     private async Task<bool> TryTmdbMovie(
-        string imdbId,
+        int? knownTmdbId,
+        string? imdbId,
+        MovieLookup lookup,
         Configuration.PluginConfiguration config,
         string tmdbApiKey,
         MetadataResult<Movie> result, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("RussianMetadata: Trying TMDB for IMDb ID {ImdbId}", imdbId);
+        _logger.LogInformation(
+            "ChooseYourMeta: Trying TMDB — TmdbId={TmdbId}, ImdbId={ImdbId}, Name='{Name}', Year={Year}",
+            knownTmdbId?.ToString(CultureInfo.InvariantCulture) ?? "N/A",
+            imdbId ?? "N/A",
+            lookup.Name,
+            lookup.Year?.ToString(CultureInfo.InvariantCulture) ?? "N/A");
 
         try
         {
@@ -108,34 +134,49 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
             httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
-            // Step 1: Find TMDB movie ID by IMDb ID
-            var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
-            _logger.LogInformation("RussianMetadata: TMDB find URL (without key): {Url}", findUrl.Replace(tmdbApiKey, "***"));
-            _logger.LogInformation("RussianMetadata: TMDB find for {ImdbId}", imdbId);
-
-            using var findResponse = await httpClient.GetAsync(findUrl, cancellationToken);
-            _logger.LogInformation("RussianMetadata: TMDB find response status: {Status}", (int)findResponse.StatusCode);
-            if (!findResponse.IsSuccessStatusCode)
+            int? resolvedTmdbId = knownTmdbId;
+            if (resolvedTmdbId is null && !string.IsNullOrEmpty(imdbId))
             {
-                _logger.LogWarning("RussianMetadata: TMDB find failed ({Status})", findResponse.StatusCode);
+                var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
+                using var findResponse = await httpClient.GetAsync(findUrl, cancellationToken);
+                if (findResponse.IsSuccessStatusCode)
+                {
+                    var findJson = await findResponse.Content.ReadAsStringAsync(cancellationToken);
+                    var findData = JsonSerializer.Deserialize<TmdbFindResult>(findJson, JsonOptions.Default);
+                    resolvedTmdbId = findData?.MovieResults?.Count > 0
+                        ? findData.MovieResults[0].Id
+                        : null;
+                }
+            }
+
+            if (resolvedTmdbId is null && !string.IsNullOrWhiteSpace(lookup.Name))
+            {
+                var searchUrl = $"{TmdbApiBase}/search/movie?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU&query={Uri.EscapeDataString(lookup.Name)}";
+                if (lookup.Year is not null)
+                {
+                    searchUrl += $"&year={lookup.Year.Value.ToString(CultureInfo.InvariantCulture)}";
+                }
+
+                using var searchResponse = await httpClient.GetAsync(searchUrl, cancellationToken);
+                if (searchResponse.IsSuccessStatusCode)
+                {
+                    var searchJson = await searchResponse.Content.ReadAsStringAsync(cancellationToken);
+                    var searchData = JsonSerializer.Deserialize<TmdbSearchResponse>(searchJson, JsonOptions.Default);
+                    resolvedTmdbId = MovieLookup.SelectCandidate(searchData?.Results, lookup)?.Id;
+                }
+            }
+
+            if (resolvedTmdbId is null)
+            {
+                _logger.LogWarning(
+                    "ChooseYourMeta: Could not resolve TMDB movie for '{Name}' ({Year})",
+                    lookup.Name,
+                    lookup.Year);
                 return false;
             }
 
-            var findJson = await findResponse.Content.ReadAsStringAsync(cancellationToken);
-            var findData = JsonSerializer.Deserialize<TmdbFindResult>(findJson, JsonOptions.Default);
-            var movieRef = findData?.MovieResults?.Count > 0 ? findData.MovieResults[0] : null;
-            _logger.LogInformation("RussianMetadata: TMDB find result — movieResults={Count}, tmdbId={Id}", findData?.MovieResults?.Count ?? 0, movieRef?.Id.ToString() ?? "N/A");
-
-            if (movieRef == null)
-            {
-                _logger.LogWarning("RussianMetadata: No TMDB movie for {ImdbId}", imdbId);
-                return false;
-            }
-
-            // Step 2: Fetch details in Russian
-            var detailsUrl = $"{TmdbApiBase}/movie/{movieRef.Id}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU&append_to_response=credits";
-            _logger.LogInformation("RussianMetadata: TMDB details URL (without key): {Url}", detailsUrl.Replace(tmdbApiKey, "***"));
-            _logger.LogInformation("RussianMetadata: TMDB details for ID {TmdbId}", movieRef.Id);
+            var detailsUrl = $"{TmdbApiBase}/movie/{resolvedTmdbId.Value}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU&append_to_response=credits";
+            _logger.LogInformation("ChooseYourMeta: TMDB details for ID {TmdbId}", resolvedTmdbId);
 
             using var detailsResponse = await httpClient.GetAsync(detailsUrl, cancellationToken);
             if (!detailsResponse.IsSuccessStatusCode)
@@ -150,11 +191,13 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
 
             if (movieDetails == null) return false;
 
-            var russianTitle = MovieTextLocalization.RussianOrNull(movieDetails.Title);
-            if (!string.IsNullOrEmpty(russianTitle) && config.EnableRussianTitles)
+            if (config.EnableRussianTitles)
             {
-                result.Item.Name = russianTitle;
-                _logger.LogInformation("RussianMetadata: TMDB — set Russian title: {Title}", russianTitle);
+                result.Item.Name = MovieTextLocalization.RussianOrNull(movieDetails.Title)
+                    ?? movieDetails.Title?.Trim()
+                    ?? movieDetails.OriginalTitle?.Trim()
+                    ?? lookup.Name;
+                _logger.LogInformation("ChooseYourMeta: TMDB — set title: {Title}", result.Item.Name);
             }
 
             var russianOverview = MovieTextLocalization.RussianOrNull(movieDetails.Overview);
@@ -210,9 +253,17 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
                 result.Item.OriginalTitle = movieDetails.OriginalTitle;
             }
 
-            result.Item.SetProviderId("Tmdb", movieRef.Id.ToString(CultureInfo.InvariantCulture));
+            result.Item.SetProviderId("Tmdb", resolvedTmdbId.Value.ToString(CultureInfo.InvariantCulture));
+            if (!string.IsNullOrWhiteSpace(movieDetails.ImdbId))
+            {
+                result.Item.SetProviderId("Imdb", movieDetails.ImdbId);
+            }
 
-            _logger.LogInformation("RussianMetadata: TMDB success for {ImdbId} -> {Title}", imdbId, movieDetails.Title);
+            _logger.LogInformation(
+                "ChooseYourMeta: TMDB success — TmdbId={TmdbId}, ImdbId={ImdbId}, Title='{Title}'",
+                resolvedTmdbId,
+                movieDetails.ImdbId ?? imdbId ?? "N/A",
+                movieDetails.Title);
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -647,6 +698,8 @@ internal class TmdbTvRef
 internal class TmdbMovieDetails
 {
     public int Id { get; set; }
+    [JsonPropertyName("imdb_id")]
+    public string? ImdbId { get; set; }
     public string? Title { get; set; }
     public string? Overview { get; set; }
     public string? Tagline { get; set; }
@@ -711,6 +764,118 @@ internal class TmdbSearchItem
     public string? Overview { get; set; }
     [JsonPropertyName("release_date")]
     public string? ReleaseDate { get; set; }
+}
+
+internal sealed record MovieLookup(string Name, int? Year)
+{
+    private static readonly Regex LeadingYear =
+        new(@"^\s*\((?<year>\d{4})\)\s*", RegexOptions.Compiled);
+    private static readonly Regex TrailingYear =
+        new(@"\s*\((?<year>\d{4})\)\s*$", RegexOptions.Compiled);
+
+    public static MovieLookup Parse(string? rawName, int? suppliedYear)
+    {
+        var name = (rawName ?? string.Empty).Trim().Trim('"').Trim();
+        int? year = suppliedYear;
+
+        var leading = LeadingYear.Match(name);
+        if (leading.Success)
+        {
+            year ??= int.Parse(leading.Groups["year"].Value, CultureInfo.InvariantCulture);
+            name = name[leading.Length..].Trim();
+        }
+
+        var trailing = TrailingYear.Match(name);
+        if (trailing.Success)
+        {
+            year ??= int.Parse(trailing.Groups["year"].Value, CultureInfo.InvariantCulture);
+            name = name[..trailing.Index].Trim();
+        }
+
+        return new MovieLookup(name.Trim('"').Trim(), year);
+    }
+
+    public static int? ExtractTmdbId(IReadOnlyDictionary<string, string> providerIds)
+    {
+        foreach (var pair in providerIds)
+        {
+            if (pair.Key.Equals("Tmdb", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(pair.Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+                && id > 0)
+            {
+                return id;
+            }
+        }
+
+        return null;
+    }
+
+    public static TmdbSearchItem? SelectCandidate(
+        IReadOnlyList<TmdbSearchItem>? candidates,
+        MovieLookup lookup)
+    {
+        if (candidates is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var normalizedLookup = Normalize(lookup.Name);
+        return candidates
+            .Select((candidate, index) => new
+            {
+                Candidate = candidate,
+                Index = index,
+                YearMatch = lookup.Year is not null
+                    && GetYear(candidate.ReleaseDate) == lookup.Year,
+                TitleScore = Math.Max(
+                    Score(normalizedLookup, Normalize(candidate.Title)),
+                    Score(normalizedLookup, Normalize(candidate.OriginalTitle)))
+            })
+            .OrderByDescending(item => item.YearMatch)
+            .ThenByDescending(item => item.TitleScore)
+            .ThenBy(item => item.Index)
+            .Select(item => item.Candidate)
+            .FirstOrDefault();
+    }
+
+    private static int Score(string expected, string actual)
+    {
+        if (string.IsNullOrEmpty(expected) || string.IsNullOrEmpty(actual))
+        {
+            return 0;
+        }
+
+        if (expected == actual)
+        {
+            return 3;
+        }
+
+        if (actual.StartsWith(expected, StringComparison.Ordinal)
+            || expected.StartsWith(actual, StringComparison.Ordinal))
+        {
+            return 2;
+        }
+
+        return actual.Contains(expected, StringComparison.Ordinal)
+            || expected.Contains(actual, StringComparison.Ordinal)
+            ? 1
+            : 0;
+    }
+
+    private static string Normalize(string? value)
+    {
+        return string.Concat((value ?? string.Empty)
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit));
+    }
+
+    private static int? GetYear(string? releaseDate)
+    {
+        return releaseDate?.Length >= 4
+            && int.TryParse(releaseDate[..4], NumberStyles.None, CultureInfo.InvariantCulture, out var year)
+            ? year
+            : null;
+    }
 }
 
 // ───── Wikidata / SPARQL models ─────

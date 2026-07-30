@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using System.Collections.Concurrent;
 using Jellyfin.Data.Enums;
@@ -13,8 +14,15 @@ internal static class TmdbPeopleLocalization
 {
     private const string WikidataSparqlEndpoint =
         "https://query.wikidata.org/sparql";
+    private const int LookupChunkSize = 25;
+    private const int MaxLookupAttempts = 3;
+    private static readonly TimeSpan MissingLabelLifetime =
+        TimeSpan.FromMinutes(15);
     private static readonly ConcurrentDictionary<int, string>
         RussianNameCache = new();
+    private static readonly ConcurrentDictionary<int, DateTimeOffset>
+        MissingNameCache = new();
+    private static readonly SemaphoreSlim LookupGate = new(1, 1);
 
     public static async Task AddLocalizedPeople<TItem>(
         TmdbCredits credits,
@@ -127,28 +135,89 @@ internal static class TmdbPeopleLocalization
             return [];
         }
 
-        var pendingIds = ids
-            .Distinct()
-            .Where(id => !RussianNameCache.ContainsKey(id))
-            .ToArray();
+        var pendingIds = PendingIds(ids);
         if (pendingIds.Length == 0)
         {
             return CachedRussianNames(ids);
         }
 
-        using var httpClient = httpClientFactory.CreateClient(
-            "RussianMetadata");
-        httpClient.DefaultRequestHeaders.TryAddWithoutValidation(
-            "Accept",
-            "application/json");
-        httpClient.DefaultRequestHeaders.TryAddWithoutValidation(
-            "User-Agent",
-            "ChooseYourMeta/1.4");
-        httpClient.Timeout = TimeSpan.FromSeconds(30);
+        await LookupGate.WaitAsync(cancellationToken);
+        try
+        {
+            pendingIds = PendingIds(ids);
+            if (pendingIds.Length == 0)
+            {
+                return CachedRussianNames(ids);
+            }
 
+            using var httpClient = httpClientFactory.CreateClient(
+                "RussianMetadata");
+            httpClient.DefaultRequestHeaders.TryAddWithoutValidation(
+                "Accept",
+                "application/json");
+            httpClient.DefaultRequestHeaders.TryAddWithoutValidation(
+                "User-Agent",
+                "ChooseYourMeta/1.4.1");
+            httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+            var localizedCount = 0;
+            foreach (var chunk in pendingIds.Chunk(LookupChunkSize))
+            {
+                var fetched = await FetchChunk(
+                    chunk,
+                    httpClient,
+                    logger,
+                    cancellationToken);
+                if (fetched is null)
+                {
+                    continue;
+                }
+
+                foreach (var pair in fetched)
+                {
+                    RussianNameCache[pair.Key] = pair.Value;
+                    MissingNameCache.TryRemove(pair.Key, out _);
+                    localizedCount++;
+                }
+
+                var missingUntil =
+                    DateTimeOffset.UtcNow + MissingLabelLifetime;
+                foreach (var id in chunk.Where(
+                    id => !fetched.ContainsKey(id)))
+                {
+                    MissingNameCache[id] = missingUntil;
+                }
+            }
+
+            logger.LogInformation(
+                "ChooseYourMeta: Russian person lookup completed — requested {Requested}, localized {Localized}, cached total {Cached}",
+                pendingIds.Length,
+                localizedCount,
+                RussianNameCache.Count);
+            return CachedRussianNames(ids);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "ChooseYourMeta: Russian person label lookup failed");
+            return CachedRussianNames(ids);
+        }
+        finally
+        {
+            LookupGate.Release();
+        }
+    }
+
+    private static async Task<Dictionary<int, string>?> FetchChunk(
+        IReadOnlyCollection<int> ids,
+        HttpClient httpClient,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
         var values = string.Join(
             " ",
-            pendingIds.Select(id =>
+            ids.Select(id =>
                 $"\"{id.ToString(CultureInfo.InvariantCulture)}\""));
         var query = $@"
 SELECT ?externalId ?ruLabel WHERE {{
@@ -160,52 +229,92 @@ SELECT ?externalId ?ruLabel WHERE {{
         var url =
             $"{WikidataSparqlEndpoint}?format=json&query={Uri.EscapeDataString(query)}";
 
-        try
+        for (var attempt = 1; attempt <= MaxLookupAttempts; attempt++)
         {
             using var response = await httpClient.GetAsync(
                 url,
                 cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            if (response.IsSuccessStatusCode)
             {
-                return CachedRussianNames(ids);
+                var json = await response.Content.ReadAsStringAsync(
+                    cancellationToken);
+                var data = JsonSerializer.Deserialize<SparqlResult>(
+                    json,
+                    JsonOptions.Default);
+                return data?.Results?.Bindings?
+                    .Where(binding =>
+                        int.TryParse(
+                            binding.ExternalId?.Value,
+                            NumberStyles.None,
+                            CultureInfo.InvariantCulture,
+                            out _)
+                        && !string.IsNullOrWhiteSpace(
+                            binding.RuLabel?.Value))
+                    .GroupBy(binding => binding.ExternalId!.Value!)
+                    .ToDictionary(
+                        group => int.Parse(
+                            group.Key,
+                            CultureInfo.InvariantCulture),
+                        group => group.First().RuLabel!.Value!)
+                    ?? [];
             }
 
-            var json = await response.Content.ReadAsStringAsync(
-                cancellationToken);
-            var data = JsonSerializer.Deserialize<SparqlResult>(
-                json,
-                JsonOptions.Default);
-            var fetched = data?.Results?.Bindings?
-                .Where(binding =>
-                    int.TryParse(
-                        binding.ExternalId?.Value,
-                        NumberStyles.None,
-                        CultureInfo.InvariantCulture,
-                        out _)
-                    && !string.IsNullOrWhiteSpace(binding.RuLabel?.Value))
-                .GroupBy(binding => binding.ExternalId!.Value!)
-                .ToDictionary(
-                    group => int.Parse(
-                        group.Key,
-                        CultureInfo.InvariantCulture),
-                    group => group.First().RuLabel!.Value!)
-                ?? [];
-            foreach (var id in pendingIds)
+            if (!ShouldRetry(response.StatusCode)
+                || attempt == MaxLookupAttempts)
             {
-                RussianNameCache.TryAdd(
-                    id,
-                    fetched.GetValueOrDefault(id) ?? string.Empty);
+                logger.LogWarning(
+                    "ChooseYourMeta: Russian person lookup returned HTTP {StatusCode} for {Count} people",
+                    (int)response.StatusCode,
+                    ids.Count);
+                return null;
             }
 
-            return CachedRussianNames(ids);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
+            var delay = response.Headers.RetryAfter?.Delta
+                ?? TimeSpan.FromSeconds(Math.Pow(2, attempt - 1));
             logger.LogWarning(
-                ex,
-                "ChooseYourMeta: Russian person label lookup failed");
-            return CachedRussianNames(ids);
+                "ChooseYourMeta: Russian person lookup returned HTTP {StatusCode}; retry {Attempt}/{MaxAttempts} in {DelayMs} ms",
+                (int)response.StatusCode,
+                attempt + 1,
+                MaxLookupAttempts,
+                delay.TotalMilliseconds);
+            await Task.Delay(delay, cancellationToken);
         }
+
+        return null;
+    }
+
+    internal static bool ShouldRetry(HttpStatusCode statusCode)
+    {
+        return statusCode is HttpStatusCode.TooManyRequests
+            or HttpStatusCode.BadGateway
+            or HttpStatusCode.ServiceUnavailable
+            or HttpStatusCode.GatewayTimeout;
+    }
+
+    private static int[] PendingIds(IEnumerable<int> ids)
+    {
+        var now = DateTimeOffset.UtcNow;
+        return ids
+            .Distinct()
+            .Where(id => !RussianNameCache.ContainsKey(id))
+            .Where(id =>
+            {
+                if (!MissingNameCache.TryGetValue(
+                    id,
+                    out var missingUntil))
+                {
+                    return true;
+                }
+
+                if (missingUntil > now)
+                {
+                    return false;
+                }
+
+                MissingNameCache.TryRemove(id, out _);
+                return true;
+            })
+            .ToArray();
     }
 
     private static Dictionary<int, string> CachedRussianNames(

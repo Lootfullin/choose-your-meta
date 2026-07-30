@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="${1:-1.4.0}"
+version="${1:-1.4.1}"
 jellyfin_version="${2:-10.11.11}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
@@ -56,7 +56,7 @@ cp -- "${dll}" "${stage}/"
 cat > "${stage}/meta.json" <<EOF
 {
   "category": "General",
-  "changelog": "Added Russian series and season credits, localized season metadata, and canonical TMDB person mapping.",
+  "changelog": "Fixed Russian cast and crew localization during large concurrent library scans.",
   "description": "Choose Russian or English metadata, posters, and logos for movies and collections.",
   "guid": "a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b",
   "name": "Choose your Meta!",

@@ -30,8 +30,11 @@ public sealed class ChooseYourMetaController : ControllerBase
             Plugin.Instance?.Configuration ?? new Configuration.PluginConfiguration();
         return Ok(new ChooseYourMetaStatus(
             !string.IsNullOrWhiteSpace(
-                TmdbApiKeyResolver.Resolve(configuration))));
+                TmdbApiKeyResolver.Resolve(configuration)),
+            !string.IsNullOrWhiteSpace(FanartApiKeyResolver.Resolve())));
     }
 }
 
-public sealed record ChooseYourMetaStatus(bool JellyfinTmdbAvailable);
+public sealed record ChooseYourMetaStatus(
+    bool JellyfinTmdbAvailable,
+    bool JellyfinFanartAvailable);

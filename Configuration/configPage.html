@@ -21,7 +21,7 @@
                     </div>
                     <div id="TmdbIntegrationStatus" class="fieldDescription"></div>
 
-                    <h3>Proxy (для TMDB)</h3>
+                    <h3>Proxy (для TMDB и Fanart.tv)</h3>
                     <label for="ProxyUrl">Proxy URL:</label>
                     <input id="ProxyUrl" name="ProxyUrl" type="text" is="emby-input" placeholder="http://host:port" />
                     <div class="fieldDescription">Например: http://proxy.example.com:3128</div>
@@ -109,9 +109,17 @@
                         <option value="2">Не загружать этим плагином</option>
                     </select>
 
+                    <br/>
+                    <label for="CollectionLogoPreference">Логотипы:</label>
+                    <select id="CollectionLogoPreference" name="CollectionLogoPreference" is="emby-select">
+                        <option value="1">Сначала английские, затем русские (EN → RU)</option>
+                        <option value="0">Сначала русские, затем английские (RU → EN)</option>
+                        <option value="2">Не загружать этим плагином</option>
+                    </select>
                     <div class="fieldDescription">
-                        TMDB не предоставляет логотипы для коллекций — только постеры и фоны.
+                        Постеры коллекций загружаются из TMDB, логотипы — через официальный плагин Fanart.
                     </div>
+                    <div id="FanartIntegrationStatus" class="fieldDescription"></div>
 
                     <div class="fieldDescription">
                         Российский фильм определяется по стране производства RU;
@@ -165,6 +173,7 @@
                         document.getElementById('RussianMoviePosterPreference').value = config.RussianMoviePosterPreference == null ? 0 : config.RussianMoviePosterPreference;
                         document.getElementById('RussianMovieLogoPreference').value = config.RussianMovieLogoPreference == null ? 0 : config.RussianMovieLogoPreference;
                         document.getElementById('CollectionPosterPreference').value = config.CollectionPosterPreference == null ? 1 : config.CollectionPosterPreference;
+                        document.getElementById('CollectionLogoPreference').value = config.CollectionLogoPreference == null ? 1 : config.CollectionLogoPreference;
                         ApiClient.ajax({
                             url: ApiClient.getUrl('ChooseYourMeta/Status'),
                             type: 'GET',
@@ -174,9 +183,15 @@
                             document.getElementById('TmdbIntegrationStatus').textContent = available
                                 ? 'Встроенная интеграция TMDB найдена.'
                                 : 'Встроенная интеграция TMDB не найдена. Укажите собственный ключ.';
+                            var fanartAvailable = status.jellyfinFanartAvailable === true || status.JellyfinFanartAvailable === true;
+                            document.getElementById('FanartIntegrationStatus').textContent = fanartAvailable
+                                ? 'Официальный плагин Fanart найден — логотипы коллекций доступны.'
+                                : 'Плагин Fanart не найден. Установите его из каталога Jellyfin для логотипов коллекций.';
                         }).catch(function () {
                             document.getElementById('TmdbIntegrationStatus').textContent =
                                 'Не удалось проверить встроенную интеграцию TMDB.';
+                            document.getElementById('FanartIntegrationStatus').textContent =
+                                'Не удалось проверить плагин Fanart.';
                         });
                         Dashboard.hideLoadingMsg();
                     });
@@ -202,6 +217,7 @@
                         config.RussianMoviePosterPreference = parseInt(document.getElementById('RussianMoviePosterPreference').value, 10);
                         config.RussianMovieLogoPreference = parseInt(document.getElementById('RussianMovieLogoPreference').value, 10);
                         config.CollectionPosterPreference = parseInt(document.getElementById('CollectionPosterPreference').value, 10);
+                        config.CollectionLogoPreference = parseInt(document.getElementById('CollectionLogoPreference').value, 10);
 
                         ApiClient.updatePluginConfiguration(PluginConfig.pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
                     });

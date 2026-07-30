@@ -98,5 +98,8 @@ public sealed class MovieTextLocalizationTests
         Assert.Equal(
             ArtworkLanguagePreference.EnglishFirst,
             configuration.CollectionPosterPreference);
+        Assert.Equal(
+            ArtworkLanguagePreference.EnglishFirst,
+            configuration.CollectionLogoPreference);
     }
 }

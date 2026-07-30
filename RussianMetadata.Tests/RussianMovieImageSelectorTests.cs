@@ -174,6 +174,33 @@ public sealed class RussianMovieImageSelectorTests
             Assert.Single(selected).Type);
     }
 
+    [Fact]
+    public void FanartCollectionLogos_UseConfiguredLanguageThenResolution()
+    {
+        var artwork = new FanartMovieArtwork
+        {
+            HdMovieLogos =
+            [
+                FanartImage("ru-hd.png", "ru", "2", "800", "310"),
+                FanartImage("en-hd.png", "en", "10", "800", "310")
+            ],
+            MovieLogos =
+            [
+                FanartImage("ru-sd.png", "ru", "100", "400", "155")
+            ]
+        };
+
+        var result = FanartLogoSelector.Select(
+            artwork,
+            ArtworkLanguagePreference.RussianFirst,
+            "test");
+
+        Assert.Equal(
+            ["ru-hd.png", "ru-sd.png", "en-hd.png"],
+            FileNames(result));
+        Assert.All(result, image => Assert.Equal(ImageType.Logo, image.Type));
+    }
+
     private static TmdbArtworkImages ImagesWithBothLanguages()
     {
         return new TmdbArtworkImages
@@ -215,6 +242,23 @@ public sealed class RussianMovieImageSelectorTests
             VoteCount = votes,
             Width = 1000,
             Height = 1500
+        };
+    }
+
+    private static FanartImage FanartImage(
+        string fileName,
+        string language,
+        string likes,
+        string width,
+        string height)
+    {
+        return new FanartImage
+        {
+            Url = $"https://assets.fanart.tv/{fileName}",
+            Language = language,
+            Likes = likes,
+            Width = width,
+            Height = height
         };
     }
 }

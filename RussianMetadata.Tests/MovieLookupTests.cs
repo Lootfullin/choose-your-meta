@@ -1,10 +1,20 @@
 using System.Collections.Generic;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Providers;
 using Xunit;
 
 namespace RussianMetadata.Tests;
 
 public sealed class MovieLookupTests
 {
+    [Fact]
+    public void MovieProvider_RunsAfterRemoteMergeAsCustomProvider()
+    {
+        Assert.True(
+            typeof(ICustomMetadataProvider<Movie>).IsAssignableFrom(
+                typeof(RussianMovieProvider)));
+    }
+
     [Theory]
     [InlineData("(1967) You Only Live Twice", null, "You Only Live Twice", 1967)]
     [InlineData("You Only Live Twice (1967)", null, "You Only Live Twice", 1967)]

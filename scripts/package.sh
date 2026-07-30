@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="${1:-1.3.1}"
+version="${1:-1.3.2}"
 jellyfin_version="${2:-10.11.11}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
@@ -56,7 +56,7 @@ cp -- "${dll}" "${stage}/"
 cat > "${stage}/meta.json" <<EOF
 {
   "category": "General",
-  "changelog": "Fixed movie localization when Jellyfin provides TMDB ID or only a movie title and year.",
+  "changelog": "Fixed Russian movie titles being preserved as resolver-derived English names by Jellyfin.",
   "description": "Choose Russian or English metadata, posters, and logos for movies and collections.",
   "guid": "a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b",
   "name": "Choose your Meta!",

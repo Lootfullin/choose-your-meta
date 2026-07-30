@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
@@ -18,7 +19,9 @@ using Microsoft.Extensions.Logging;
 
 namespace RussianMetadata;
 
-public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, MovieInfo>
+public partial class RussianMovieProvider :
+    IRemoteMetadataProvider<Movie, MovieInfo>,
+    ICustomMetadataProvider<Movie>
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<RussianMovieProvider> _logger;
@@ -39,6 +42,98 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
     }
 
     public string Name => "Choose your Meta!";
+
+    // Jellyfin seeds the remote-provider merge target with the resolver/file
+    // name. Remote providers may then fill only empty fields, so even the
+    // first provider cannot replace that name. Custom providers run after the
+    // remote merge and are the supported point for applying the localized
+    // title.
+    public async Task<ItemUpdateType> FetchAsync(
+        Movie item,
+        MetadataRefreshOptions options,
+        CancellationToken cancellationToken)
+    {
+        var config = Plugin.Configuration;
+        if (!config.EnableRussianTitles)
+        {
+            return ItemUpdateType.None;
+        }
+
+        int? tmdbId = MovieLookup.ExtractTmdbId(item.ProviderIds);
+        if (tmdbId is null)
+        {
+            _logger.LogInformation(
+                "ChooseYourMeta: Post-refresh title skipped for '{Name}': no TMDB ID",
+                item.Name);
+            return ItemUpdateType.None;
+        }
+
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
+        if (string.IsNullOrWhiteSpace(tmdbApiKey))
+        {
+            _logger.LogWarning(
+                "ChooseYourMeta: Post-refresh title skipped for TMDB {TmdbId}: TMDB integration unavailable",
+                tmdbId);
+            return ItemUpdateType.None;
+        }
+
+        try
+        {
+            using var handler = CreateProxyHandler(config);
+            using var httpClient = new HttpClient(handler, disposeHandler: true);
+            httpClient.DefaultRequestHeaders.TryAddWithoutValidation(
+                "Accept",
+                "application/json");
+            httpClient.Timeout = TimeSpan.FromSeconds(5);
+
+            var url = $"{TmdbApiBase}/movie/{tmdbId.Value}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU";
+            using var response = await httpClient.GetAsync(url, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "ChooseYourMeta: Post-refresh title request failed for TMDB {TmdbId} ({Status})",
+                    tmdbId,
+                    response.StatusCode);
+                return ItemUpdateType.None;
+            }
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            var details = JsonSerializer.Deserialize<TmdbMovieDetails>(
+                json,
+                JsonOptions.Default);
+            var russianTitle = MovieTextLocalization.RussianOrNull(details?.Title);
+            if (string.IsNullOrWhiteSpace(russianTitle))
+            {
+                _logger.LogInformation(
+                    "ChooseYourMeta: TMDB {TmdbId} has no Russian title; keeping '{Name}'",
+                    tmdbId,
+                    item.Name);
+                return ItemUpdateType.None;
+            }
+
+            if (string.Equals(item.Name, russianTitle, StringComparison.Ordinal))
+            {
+                return ItemUpdateType.None;
+            }
+
+            var previousName = item.Name;
+            item.Name = russianTitle;
+            _logger.LogInformation(
+                "ChooseYourMeta: Post-refresh title applied for TMDB {TmdbId}: '{PreviousName}' -> '{RussianTitle}'",
+                tmdbId,
+                previousName,
+                russianTitle);
+            return ItemUpdateType.MetadataEdit;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(
+                ex,
+                "ChooseYourMeta: Post-refresh title failed for TMDB {TmdbId}",
+                tmdbId);
+            return ItemUpdateType.None;
+        }
+    }
 
     public async Task<MetadataResult<Movie>> GetMetadata(
         MovieInfo info,

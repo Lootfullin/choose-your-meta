@@ -91,9 +91,17 @@ internal static class LibraryOptionConfigurator
         var types = collectionType switch
         {
             CollectionTypeOptions.movies => new[] { "Movie", "BoxSet" },
-            CollectionTypeOptions.tvshows => new[] { "Series", "Episode" },
+            CollectionTypeOptions.tvshows =>
+                new[] { "Series", "Season", "Episode" },
             CollectionTypeOptions.mixed =>
-                new[] { "Movie", "BoxSet", "Series", "Episode" },
+                new[]
+                {
+                    "Movie",
+                    "BoxSet",
+                    "Series",
+                    "Season",
+                    "Episode"
+                },
             CollectionTypeOptions.boxsets => new[] { "BoxSet" },
             _ => []
         };

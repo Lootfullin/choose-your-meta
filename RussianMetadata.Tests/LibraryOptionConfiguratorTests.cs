@@ -91,7 +91,7 @@ public sealed class LibraryOptionConfiguratorTests
             options.TypeOptions,
             itemOptions => Assert.Empty(itemOptions.ImageFetchers));
         Assert.Equal(
-            ["Episode", "Series"],
+            ["Episode", "Season", "Series"],
             options.TypeOptions.Select(value => value.Type).Order().ToArray());
     }
 }

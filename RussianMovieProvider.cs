@@ -337,9 +337,11 @@ public partial class RussianMovieProvider :
 
             if (config.EnableRussianPeople && movieDetails.Credits is not null)
             {
-                await AddLocalizedPeople(
+                await TmdbPeopleLocalization.AddLocalizedPeople(
                     movieDetails.Credits,
                     result,
+                    _httpClientFactory,
+                    _logger,
                     cancellationToken);
             }
 
@@ -457,64 +459,6 @@ public partial class RussianMovieProvider :
         return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
     }
 
-    private async Task AddLocalizedPeople(
-        TmdbCredits credits,
-        MetadataResult<Movie> result,
-        CancellationToken cancellationToken)
-    {
-        var cast = credits.Cast?
-            .Where(person => person.Id > 0 && !string.IsNullOrWhiteSpace(person.Name))
-            .OrderBy(person => person.Order)
-            .Take(50)
-            .ToArray() ?? [];
-        var crew = credits.Crew?
-            .Where(person => person.Id > 0
-                && !string.IsNullOrWhiteSpace(person.Name)
-                && MovieTextLocalization.MapCrewJob(person.Job) is not null)
-            .ToArray() ?? [];
-        var ids = cast.Select(person => person.Id)
-            .Concat(crew.Select(person => person.Id))
-            .Distinct()
-            .ToArray();
-        var russianNames = await FetchRussianLabelsByExternalIds(
-            "P4985",
-            ids,
-            cancellationToken);
-
-        foreach (var actor in cast)
-        {
-            var person = new PersonInfo
-            {
-                Name = russianNames.GetValueOrDefault(actor.Id) ?? actor.Name!.Trim(),
-                Role = actor.Character?.Trim() ?? string.Empty,
-                Type = PersonKind.Actor,
-                SortOrder = actor.Order,
-                ImageUrl = BuildProfileUrl(actor.ProfilePath)
-            };
-            person.SetProviderId("Tmdb", actor.Id.ToString(CultureInfo.InvariantCulture));
-            result.AddPerson(person);
-        }
-
-        foreach (var member in crew)
-        {
-            var kind = MovieTextLocalization.MapCrewJob(member.Job);
-            if (kind is null)
-            {
-                continue;
-            }
-
-            var person = new PersonInfo
-            {
-                Name = russianNames.GetValueOrDefault(member.Id) ?? member.Name!.Trim(),
-                Role = member.Job?.Trim() ?? string.Empty,
-                Type = kind.Value,
-                ImageUrl = BuildProfileUrl(member.ProfilePath)
-            };
-            person.SetProviderId("Tmdb", member.Id.ToString(CultureInfo.InvariantCulture));
-            result.AddPerson(person);
-        }
-    }
-
     private async Task<Dictionary<int, string>> FetchRussianLabelsByExternalIds(
         string propertyId,
         IReadOnlyCollection<int> ids,
@@ -582,13 +526,6 @@ SELECT ?externalId ?ruLabel WHERE {{
                 propertyId);
             return [];
         }
-    }
-
-    private static string? BuildProfileUrl(string? profilePath)
-    {
-        return string.IsNullOrWhiteSpace(profilePath)
-            ? null
-            : $"https://image.tmdb.org/t/p/original{profilePath}";
     }
 
     // ───── IMDb ID extraction ─────

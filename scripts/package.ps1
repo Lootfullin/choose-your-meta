@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '1.4.1',
+    [string]$Version = '1.4.2',
     [string]$JellyfinVersion = '10.11.11'
 )
 
@@ -63,7 +63,7 @@ Copy-Item -LiteralPath $dll -Destination $stage
 
 $meta = @{
     category = 'General'
-    changelog = 'Fixed Russian cast and crew localization during large concurrent library scans.'
+    changelog = 'Prioritize matching movie titles over exact release years and reject unrelated TMDB results.'
     description = 'Choose Russian or English metadata, posters, and logos for movies and collections.'
     guid = 'a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b'
     name = 'Choose your Meta!'

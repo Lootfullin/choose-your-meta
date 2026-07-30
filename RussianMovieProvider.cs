@@ -857,17 +857,35 @@ internal sealed record MovieLookup(string Name, int? Year)
             {
                 Candidate = candidate,
                 Index = index,
-                YearMatch = lookup.Year is not null
-                    && GetYear(candidate.ReleaseDate) == lookup.Year,
+                YearScore = ScoreYear(
+                    lookup.Year,
+                    GetYear(candidate.ReleaseDate)),
                 TitleScore = Math.Max(
                     Score(normalizedLookup, Normalize(candidate.Title)),
                     Score(normalizedLookup, Normalize(candidate.OriginalTitle)))
             })
-            .OrderByDescending(item => item.YearMatch)
-            .ThenByDescending(item => item.TitleScore)
+            .Where(item => item.TitleScore > 0)
+            .OrderByDescending(item => item.TitleScore)
+            .ThenByDescending(item => item.YearScore)
             .ThenBy(item => item.Index)
             .Select(item => item.Candidate)
             .FirstOrDefault();
+    }
+
+    private static int ScoreYear(int? expected, int? actual)
+    {
+        if (expected is null || actual is null)
+        {
+            return 0;
+        }
+
+        var difference = Math.Abs(expected.Value - actual.Value);
+        return difference switch
+        {
+            0 => 2,
+            1 => 1,
+            _ => 0
+        };
     }
 
     private static int Score(string expected, string actual)

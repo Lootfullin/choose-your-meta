@@ -73,6 +73,57 @@ public sealed class MovieLookupTests
     }
 
     [Fact]
+    public void SelectCandidate_PrefersMatchingTitleOverExactYear()
+    {
+        var candidates = new List<TmdbSearchItem>
+        {
+            new()
+            {
+                Id = 1966,
+                Title = "11-й конкурс песни «Евровидение»",
+                OriginalTitle = "Eurovision Song Contest 1966",
+                ReleaseDate = "1966-03-05"
+            },
+            new()
+            {
+                Id = 20803,
+                Title = "Кавказская пленница, или Новые приключения Шурика",
+                ReleaseDate = "1967-04-03"
+            }
+        };
+
+        var selected = MovieLookup.SelectCandidate(
+            candidates,
+            new MovieLookup(
+                "Кавказская пленница, или Новые приключения Шурика",
+                1966));
+
+        Assert.Equal(20803, selected?.Id);
+    }
+
+    [Fact]
+    public void SelectCandidate_RejectsUnrelatedTitleDespiteExactYear()
+    {
+        var candidates = new List<TmdbSearchItem>
+        {
+            new()
+            {
+                Id = 1966,
+                Title = "11-й конкурс песни «Евровидение»",
+                ReleaseDate = "1966-03-05"
+            }
+        };
+
+        var selected = MovieLookup.SelectCandidate(
+            candidates,
+            new MovieLookup(
+                "Кавказская пленница, или Новые приключения Шурика",
+                1966));
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
     public void TmdbMovieDetails_DeserializesImdbId()
     {
         const string json = """{"id":667,"imdb_id":"tt0062512"}""";

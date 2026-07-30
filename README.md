@@ -41,22 +41,47 @@
 
 ## Установка
 
-### Вариант 1: Вручную
+### Вариант 1: Из каталога Jellyfin — рекомендуется
 
-1. Скачайте `RussianMetadata.dll` из [Releases](https://github.com/Lootfullin/choose-your-meta/releases)
-2. Скопируйте в директорию плагинов Jellyfin:
+1. Откройте **Dashboard → Plugins → Repositories**.
+2. Добавьте репозиторий:
+
+   ```text
+   https://raw.githubusercontent.com/Lootfullin/jellyfin-smart-resolver/main/manifest.json
    ```
-   /path/to/jellyfin/plugins/RussianMetadata/RussianMetadata.dll
+
+3. Откройте **Catalog → General → Choose your Meta!** и нажмите **Install**.
+4. Перезапустите Jellyfin.
+
+В этом же репозитории находится отдельный плагин **Jellyfin Smart Resolver**.
+Их можно устанавливать и обновлять независимо.
+
+### Вариант 2: Вручную
+
+1. Скачайте ZIP последней версии из
+   [Releases](https://github.com/Lootfullin/choose-your-meta/releases).
+2. Распакуйте `RussianMetadata.dll` и `meta.json` в отдельную папку:
+
+   ```text
+   /path/to/jellyfin/plugins/Choose your Meta/
    ```
-3. Перезапустите Jellyfin
-4. Для логотипов коллекций установите официальный **Fanart** из каталога плагинов Jellyfin и перезапустите сервер. Его API key настраивать не нужно.
-5. Перейдите в **Dashboard → Plugins → Choose your Meta!** и настройте текст и изображения. Поле собственного TMDB API key оставьте пустым.
-6. Нажмите **Настроить библиотеки автоматически**. Плагин включит себя для фильмов, сериалов, эпизодов и коллекций и поставит выше TheMovieDB, сохранив остальные загрузчики.
-7. **Обновите метаданные** после настройки:
+
+3. Перезапустите Jellyfin.
+
+### После установки
+
+1. Для логотипов коллекций установите официальный **Fanart** из каталога
+   Jellyfin и перезапустите сервер. Его API key настраивать не нужно.
+2. Перейдите в **Dashboard → Plugins → Choose your Meta!** и настройте текст и
+   изображения. Поле собственного TMDB API key оставьте пустым.
+3. Нажмите **Настроить библиотеки автоматически**. Плагин включит себя для
+   фильмов, сериалов, эпизодов и коллекций и поставит выше TheMovieDB, сохранив
+   остальные загрузчики.
+4. **Обновите метаданные** после настройки:
    - 📺 TV библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** → **Refresh**
    - 🎬 Movies библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** и, если нужно сменить постеры/логотипы, ✅ **Replace existing images** → **Refresh**
 
-### Вариант 2: Сборка из исходников
+### Вариант 3: Сборка из исходников
 
 ```bash
 git clone https://github.com/Lootfullin/choose-your-meta.git

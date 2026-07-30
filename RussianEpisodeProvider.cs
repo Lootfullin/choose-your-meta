@@ -62,7 +62,7 @@ public partial class RussianEpisodeProvider : IRemoteMetadataProvider<Episode, E
 
         // Need series TMDB ID + season/episode numbers
         int seasonNumber, episodeNumber;
-        
+
         if (item.ParentIndexNumber.HasValue && item.IndexNumber.HasValue)
         {
             seasonNumber = item.ParentIndexNumber.Value;

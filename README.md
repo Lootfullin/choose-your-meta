@@ -4,13 +4,20 @@
 ![.NET](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat-square&logo=dotnet&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
-Плагин для Jellyfin, который автоматически заменяет английские названия и описания фильмов и сериалов на русские. Использует **TMDB** (основной источник) и **Wikidata** (резервный).
+Плагин для Jellyfin, который загружает русские текстовые метаданные в
+приоритетном порядке. Английское значение сохраняется отдельно для каждого
+поля, только если русский вариант не найден. Использует **TMDB** как основной
+источник и **Wikidata** для русских названий фильмов, студий и людей.
+Загрузчики изображений плагин не изменяет.
 
 ---
 
 ## Возможности
 
 - **🇷🇺 Русские названия и описания** — фильмы, сериалы и эпизоды отображаются на русском языке
+- **Русские данные о фильме** — слоган, жанры, студии, актёры, режиссёры и сценаристы
+- **Fallback отдельно для каждого поля** — английский текст используется только при отсутствии русского
+- **Независимые изображения** — можно оставить англоязычный загрузчик постеров, фонов и логотипов
 - **Два источника данных** — TMDB (богатые метаданные, поддержка прокси), Wikidata (SPARQL) как резерв
 - **Гибкая настройка** — включение/отключение замены названий и описаний независимо друг через друга
 - **Прокси** — опциональный HTTP-прокси для доступа к TMDB (полезно в регионах, где TMDB заблокирован)
@@ -69,6 +76,10 @@ dotnet build -c Release
 | **TMDB API Key** | Ваш TMDB API ключ (v3 auth). [Получить](https://www.themoviedb.org/settings/api) |
 | **Enable Russian Titles** | Заменять английские названия на русские |
 | **Enable Russian Overviews** | Заменять английские описания на русские |
+| **Enable Russian Taglines** | Использовать русский слоган, если он существует |
+| **Enable Russian Genres** | Загружать русские названия жанров |
+| **Enable Russian Studios** | Использовать русское название студии, если оно существует |
+| **Enable Russian People** | Использовать русские имена актёров и съёмочной группы, если они существуют |
 | **Proxy URL** | URL HTTP-прокси (например `http://proxy.example.com:3128`) |
 | **Proxy Username** | Имя пользователя для прокси (опционально) |
 | **Proxy Password** | Пароль для прокси (опционально) |
@@ -91,6 +102,10 @@ dotnet build -c Release
   <TmdbApiKey>ваш_ключ_TMDB</TmdbApiKey>
   <EnableRussianTitles>true</EnableRussianTitles>
   <EnableRussianOverviews>true</EnableRussianOverviews>
+  <EnableRussianTaglines>true</EnableRussianTaglines>
+  <EnableRussianGenres>true</EnableRussianGenres>
+  <EnableRussianStudios>true</EnableRussianStudios>
+  <EnableRussianPeople>true</EnableRussianPeople>
   <ProxyUrl>http://proxy.example.com:3128</ProxyUrl>
   <ProxyUsername>логин_прокси</ProxyUsername>
   <ProxyPassword>пароль_прокси</ProxyPassword>
@@ -167,7 +182,7 @@ RussianMetadata/
 | `IRemoteMetadataProvider<Movie, MovieInfo>` | Удалённый провайдер для фильмов |
 | `IRemoteMetadataProvider<Series, SeriesInfo>` | Удалённый провайдер для сериалов |
 | `IRemoteMetadataProvider<Episode, EpisodeInfo>` | Удалённый провайдер для эпизодов |
-| `ICustomMetadataProvider<Movie>` | Применяет русские данные после всех провайдеров |
+| `IRemoteMetadataProvider<Movie, MovieInfo>` | Возвращает полный русский результат первым; следующие провайдеры заполняют пропуски |
 | `ICustomMetadataProvider<Series>` | То же для сериалов |
 | `ICustomMetadataProvider<Episode>` | То же для эпизодов |
 
@@ -181,6 +196,16 @@ RussianMetadata/
 6. **Сборка не удаётся?** — проверьте, что установлен .NET 9.0 SDK
 
 ## Changelog
+
+### v1.3.0
+
+- Фильмы теперь локализуются по отдельным полям, а не по принципу «успешен весь источник или нет»
+- Добавлены русские слоганы, жанры, студии, актёры, режиссёры и сценаристы
+- Русские подписи людей и компаний пакетно запрашиваются из Wikidata по TMDB ID
+- Английские значения остаются fallback, когда русская подпись отсутствует
+- Провайдеры изображений и язык изображений не изменяются
+- Добавлены автоматические регрессионные тесты
+- Обновлена совместимость до Jellyfin 10.11.11
 
 ### v1.2.0 (2026-07-23)
 

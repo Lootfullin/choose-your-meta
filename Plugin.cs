@@ -13,7 +13,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
     public override string Name => "Russian Metadata";
 
-    public override string Description => "Loads Russian text metadata first and keeps English values only when no Russian translation exists";
+    public override string Description => "Prefers Russian movie metadata, posters, and logos, with standard Jellyfin providers as fallback";
 
     public override Guid Id => Guid.Parse("a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b");
 

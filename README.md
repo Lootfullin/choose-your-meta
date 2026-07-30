@@ -7,8 +7,9 @@
 Плагин для Jellyfin, который загружает русские текстовые метаданные в
 приоритетном порядке. Английское значение сохраняется отдельно для каждого
 поля, только если русский вариант не найден. Использует **TMDB** как основной
-источник и **Wikidata** для русских названий фильмов, студий и людей.
-Загрузчики изображений плагин не изменяет.
+источник и **Wikidata** для русских названий фильмов, студий и людей. Для
+фильмов также может отдавать постеры и логотипы TMDB, явно помеченные языком
+`ru`; если их нет, Jellyfin переходит к следующему загрузчику изображений.
 
 ---
 
@@ -17,7 +18,9 @@
 - **🇷🇺 Русские названия и описания** — фильмы, сериалы и эпизоды отображаются на русском языке
 - **Русские данные о фильме** — слоган, жанры, студии, актёры, режиссёры и сценаристы
 - **Fallback отдельно для каждого поля** — английский текст используется только при отсутствии русского
-- **Независимые изображения** — можно оставить англоязычный загрузчик постеров, фонов и логотипов
+- **Русские постеры и логотипы** — используются только изображения TMDB с языковой меткой `ru`
+- **Безопасный fallback изображений** — если русского варианта нет, следующий загрузчик Jellyfin выбирает обычное изображение
+- **Фоны без изменений** — плагин не вмешивается в загрузку фоновых изображений
 - **Два источника данных** — TMDB (богатые метаданные, поддержка прокси), Wikidata (SPARQL) как резерв
 - **Гибкая настройка** — включение/отключение замены названий и описаний независимо друг через друга
 - **Прокси** — опциональный HTTP-прокси для доступа к TMDB (полезно в регионах, где TMDB заблокирован)
@@ -37,7 +40,7 @@
 
 ### Вариант 1: Вручную
 
-1. Скачайте `RussianMetadata.dll` из [Releases](https://github.com/Opiumforme/jellifin-russian-metadata/releases)
+1. Скачайте `RussianMetadata.dll` из [Releases](https://github.com/Lootfullin/jellifin-russian-metadata/releases)
 2. Скопируйте в директорию плагинов Jellyfin:
    ```
    /path/to/jellyfin/plugins/RussianMetadata/RussianMetadata.dll
@@ -53,14 +56,20 @@
    > **Зачем это нужно?** Jellyfin вызывает провайдеров метаданных для каждой библиотеки только если они включены в её Metadata Downloaders. Без этого шага плагин не будет обрабатывать фильмы и сериалы.
    > Приоритет: переместите `Russian Metadata` наверх, чтобы он обрабатывался первым.
 
-6. **Обновите метаданные** после настройки:
+6. **Для русских постеров и логотипов:** в настройках той же библиотеки откройте
+   **Image Fetchers / Загрузчики изображений**, включите
+   `Russian Metadata — русские изображения` и переместите его выше TMDb.
+   Обычный TMDb оставьте включённым — он будет резервом, когда изображения с
+   меткой `ru` отсутствуют.
+
+7. **Обновите метаданные** после настройки:
    - 📺 TV библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** → **Refresh**
    - 🎬 Movies библиотека: три точки → **Refresh Metadata** → ✅ **Replace all existing metadata** → **Refresh**
 
 ### Вариант 2: Сборка из исходников
 
 ```bash
-git clone https://github.com/Opiumforme/jellifin-russian-metadata.git
+git clone https://github.com/Lootfullin/jellifin-russian-metadata.git
 cd jellifin-russian-metadata/RussianMetadata
 dotnet build -c Release
 ```
@@ -80,6 +89,8 @@ dotnet build -c Release
 | **Enable Russian Genres** | Загружать русские названия жанров |
 | **Enable Russian Studios** | Использовать русское название студии, если оно существует |
 | **Enable Russian People** | Использовать русские имена актёров и съёмочной группы, если они существуют |
+| **Enable Russian Posters** | Предпочитать постеры TMDB, явно помеченные языком `ru` |
+| **Enable Russian Logos** | Предпочитать логотипы TMDB, явно помеченные языком `ru` |
 | **Proxy URL** | URL HTTP-прокси (например `http://proxy.example.com:3128`) |
 | **Proxy Username** | Имя пользователя для прокси (опционально) |
 | **Proxy Password** | Пароль для прокси (опционально) |
@@ -106,6 +117,8 @@ dotnet build -c Release
   <EnableRussianGenres>true</EnableRussianGenres>
   <EnableRussianStudios>true</EnableRussianStudios>
   <EnableRussianPeople>true</EnableRussianPeople>
+  <EnableRussianPosters>true</EnableRussianPosters>
+  <EnableRussianLogos>true</EnableRussianLogos>
   <ProxyUrl>http://proxy.example.com:3128</ProxyUrl>
   <ProxyUsername>логин_прокси</ProxyUsername>
   <ProxyPassword>пароль_прокси</ProxyPassword>
@@ -147,7 +160,7 @@ dotnet build -c Release
 # Требуется: .NET 9.0 SDK
 # Скачать: https://dotnet.microsoft.com/download
 
-git clone https://github.com/Opiumforme/jellifin-russian-metadata.git
+git clone https://github.com/Lootfullin/jellifin-russian-metadata.git
 cd jellifin-russian-metadata/RussianMetadata
 
 # Сборка
@@ -168,6 +181,7 @@ RussianMetadata/
 │   └── configPage.html           # Веб-интерфейс в Dashboard
 ├── Plugin.cs                     # Точка входа плагина
 ├── RussianMovieProvider.cs       # Провайдер метаданных для фильмов
+├── RussianMovieImageProvider.cs  # Русские постеры и логотипы TMDB для фильмов
 ├── RussianSeriesProvider.cs      # Провайдер метаданных для сериалов
 ├── RussianEpisodeProvider.cs     # Провайдер метаданных для эпизодов
 ├── RussianMetadata.csproj        # Файл проекта .NET
@@ -203,7 +217,9 @@ RussianMetadata/
 - Добавлены русские слоганы, жанры, студии, актёры, режиссёры и сценаристы
 - Русские подписи людей и компаний пакетно запрашиваются из Wikidata по TMDB ID
 - Английские значения остаются fallback, когда русская подпись отсутствует
-- Провайдеры изображений и язык изображений не изменяются
+- Добавлен отдельный загрузчик постеров и логотипов TMDB с меткой `ru`
+- Обычные загрузчики Jellyfin остаются fallback, если русских изображений нет
+- Фоновые изображения не изменяются
 - Добавлены автоматические регрессионные тесты
 - Обновлена совместимость до Jellyfin 10.11.11
 

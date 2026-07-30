@@ -8,7 +8,7 @@
         <div data-role="content">
             <div class="content-primary">
                 <h2>Russian Metadata Plugin</h2>
-                <p>Сначала загружает русские текстовые метаданные, а английские значения сохраняет только как резерв. Загрузчики изображений не изменяются.</p>
+                <p>Сначала загружает русские метаданные. Английский текст и обычные изображения остаются резервом, если русского варианта нет.</p>
 
                 <form class="configForm">
                     <h3>TMDB API</h3>
@@ -66,9 +66,22 @@
                         <span>Использовать русские имена актёров и съёмочной группы, когда они существуют</span>
                     </label>
 
+                    <h3>Изображения фильмов</h3>
+                    <label class="checkboxContainer">
+                        <input id="EnableRussianPosters" name="EnableRussianPosters" type="checkbox" is="emby-checkbox" checked />
+                        <span>Предпочитать постеры TMDB с языковой меткой «ru»</span>
+                    </label>
+
+                    <br/>
+                    <label class="checkboxContainer">
+                        <input id="EnableRussianLogos" name="EnableRussianLogos" type="checkbox" is="emby-checkbox" checked />
+                        <span>Предпочитать логотипы TMDB с языковой меткой «ru»</span>
+                    </label>
+
                     <div class="fieldDescription">
                         Для каждого поля английское значение сохраняется, если русский вариант не найден.
-                        Настройки загрузчиков изображений не изменяются.
+                        Для изображений без варианта «ru» Jellyfin использует следующий включённый загрузчик.
+                        Фоны плагин не изменяет.
                     </div>
 
                     <br/>
@@ -98,6 +111,8 @@
                         document.getElementById('EnableRussianGenres').checked = config.EnableRussianGenres !== false;
                         document.getElementById('EnableRussianStudios').checked = config.EnableRussianStudios !== false;
                         document.getElementById('EnableRussianPeople').checked = config.EnableRussianPeople !== false;
+                        document.getElementById('EnableRussianPosters').checked = config.EnableRussianPosters !== false;
+                        document.getElementById('EnableRussianLogos').checked = config.EnableRussianLogos !== false;
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -117,6 +132,8 @@
                         config.EnableRussianGenres = document.getElementById('EnableRussianGenres').checked;
                         config.EnableRussianStudios = document.getElementById('EnableRussianStudios').checked;
                         config.EnableRussianPeople = document.getElementById('EnableRussianPeople').checked;
+                        config.EnableRussianPosters = document.getElementById('EnableRussianPosters').checked;
+                        config.EnableRussianLogos = document.getElementById('EnableRussianLogos').checked;
 
                         ApiClient.updatePluginConfiguration(PluginConfig.pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
                     });

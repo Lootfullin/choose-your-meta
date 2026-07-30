@@ -11,6 +11,8 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool EnableRussianGenres { get; set; } = true;
     public bool EnableRussianStudios { get; set; } = true;
     public bool EnableRussianPeople { get; set; } = true;
+    public bool EnableRussianPosters { get; set; } = true;
+    public bool EnableRussianLogos { get; set; } = true;
     public string ProxyUrl { get; set; } = "";
     public string ProxyUsername { get; set; } = "";
     public string ProxyPassword { get; set; } = "";

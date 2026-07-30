@@ -60,11 +60,14 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
         result.Item.SetProviderId("Imdb", imdbId);
         result.ResultLanguage = "ru";
 
-        if (!string.IsNullOrEmpty(Plugin.Configuration.TmdbApiKey))
+        var config = Plugin.Configuration;
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
+        if (!string.IsNullOrEmpty(tmdbApiKey))
         {
             await TryTmdbMovie(
                 imdbId,
-                Plugin.Configuration,
+                config,
+                tmdbApiKey,
                 result,
                 cancellationToken);
         }
@@ -73,7 +76,7 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
         // Russian overview but leave the localized title in English.
         await TryWikidata(
             imdbId,
-            Plugin.Configuration,
+            config,
             result,
             cancellationToken);
 
@@ -89,7 +92,10 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
         return result;
     }
 
-    private async Task<bool> TryTmdbMovie(string imdbId, Configuration.PluginConfiguration config,
+    private async Task<bool> TryTmdbMovie(
+        string imdbId,
+        Configuration.PluginConfiguration config,
+        string tmdbApiKey,
         MetadataResult<Movie> result, CancellationToken cancellationToken)
     {
         _logger.LogInformation("RussianMetadata: Trying TMDB for IMDb ID {ImdbId}", imdbId);
@@ -103,8 +109,8 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
             // Step 1: Find TMDB movie ID by IMDb ID
-            var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&external_source=imdb_id";
-            _logger.LogInformation("RussianMetadata: TMDB find URL (without key): {Url}", findUrl.Replace(config.TmdbApiKey, "***"));
+            var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
+            _logger.LogInformation("RussianMetadata: TMDB find URL (without key): {Url}", findUrl.Replace(tmdbApiKey, "***"));
             _logger.LogInformation("RussianMetadata: TMDB find for {ImdbId}", imdbId);
 
             using var findResponse = await httpClient.GetAsync(findUrl, cancellationToken);
@@ -127,8 +133,8 @@ public partial class RussianMovieProvider : IRemoteMetadataProvider<Movie, Movie
             }
 
             // Step 2: Fetch details in Russian
-            var detailsUrl = $"{TmdbApiBase}/movie/{movieRef.Id}?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU&append_to_response=credits";
-            _logger.LogInformation("RussianMetadata: TMDB details URL (without key): {Url}", detailsUrl.Replace(config.TmdbApiKey, "***"));
+            var detailsUrl = $"{TmdbApiBase}/movie/{movieRef.Id}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU&append_to_response=credits";
+            _logger.LogInformation("RussianMetadata: TMDB details URL (without key): {Url}", detailsUrl.Replace(tmdbApiKey, "***"));
             _logger.LogInformation("RussianMetadata: TMDB details for ID {TmdbId}", movieRef.Id);
 
             using var detailsResponse = await httpClient.GetAsync(detailsUrl, cancellationToken);
@@ -521,9 +527,10 @@ LIMIT 1";
         var results = new List<RemoteSearchResult>();
 
         var config = Plugin.Configuration;
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
 
         // Try TMDB search first
-        if (!string.IsNullOrEmpty(config.TmdbApiKey))
+        if (!string.IsNullOrEmpty(tmdbApiKey))
         {
             try
             {
@@ -532,7 +539,7 @@ LIMIT 1";
                 httpClient.Timeout = TimeSpan.FromSeconds(5);
 
                 var query = Uri.EscapeDataString(searchInfo.Name);
-                var searchUrl = $"{TmdbApiBase}/search/movie?api_key={Uri.EscapeDataString(config.TmdbApiKey)}&language=ru-RU&query={query}";
+                var searchUrl = $"{TmdbApiBase}/search/movie?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU&query={query}";
 
                 using var response = await httpClient.GetAsync(searchUrl, cancellationToken);
                 if (response.IsSuccessStatusCode)

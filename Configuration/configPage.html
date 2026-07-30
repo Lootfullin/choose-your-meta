@@ -11,13 +11,15 @@
                 <p>Выбирайте язык текстовых метаданных и изображений отдельно для российских и зарубежных фильмов.</p>
 
                 <form class="configForm">
-                    <h3>TMDB API</h3>
-                    <label for="TmdbApiKey">TMDB API Key:</label>
+                    <h3>TMDB</h3>
+                    <p>Используется API-ключ встроенного загрузчика TheMovieDB в Jellyfin. Отдельно регистрироваться на TMDB не нужно.</p>
+                    <label for="TmdbApiKey">Собственный TMDB API Key (необязательно):</label>
                     <input id="TmdbApiKey" name="TmdbApiKey" type="text" is="emby-input" />
                     <div class="fieldDescription">
-                        Получить ключ: <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a>.
-                        Без ключа используется Wikidata (меньше данных, но бесплатно).
+                        Оставьте поле пустым, чтобы использовать ключ из установленной версии Jellyfin.
+                        Собственный ключ нужен только как резерв при изменении внутренней интеграции Jellyfin.
                     </div>
+                    <div id="TmdbIntegrationStatus" class="fieldDescription"></div>
 
                     <h3>Proxy (для TMDB)</h3>
                     <label for="ProxyUrl">Proxy URL:</label>
@@ -99,8 +101,19 @@
                         <option value="2">Не загружать этим плагином</option>
                     </select>
 
+                    <h4>Коллекции</h4>
+                    <label for="CollectionPosterPreference">Постеры:</label>
+                    <select id="CollectionPosterPreference" name="CollectionPosterPreference" is="emby-select">
+                        <option value="1">Сначала английские, затем русские (EN → RU)</option>
+                        <option value="0">Сначала русские, затем английские (RU → EN)</option>
+                        <option value="2">Не загружать этим плагином</option>
+                    </select>
+
                     <div class="fieldDescription">
-                        Для изображений требуется TMDB API key.
+                        TMDB не предоставляет логотипы для коллекций — только постеры и фоны.
+                    </div>
+
+                    <div class="fieldDescription">
                         Российский фильм определяется по стране производства RU;
                         если страна не заполнена — по исходному языку ru.
                         В каждой паре второй язык используется как резерв.
@@ -109,6 +122,16 @@
                         Чтобы заменить уже сохранённые картинки,
                         обновите фильм с включённой заменой изображений.
                     </div>
+
+                    <h3>Автоматическая настройка библиотек</h3>
+                    <p>
+                        Включает Choose your Meta! для фильмов, сериалов, эпизодов и коллекций,
+                        перемещает его выше TheMovieDB. Остальные загрузчики сохраняются.
+                    </p>
+                    <button id="ConfigureLibraries" is="emby-button" type="button" class="raised block">
+                        <span>Настроить библиотеки автоматически</span>
+                    </button>
+                    <div id="ConfigureLibrariesResult" class="fieldDescription"></div>
 
                     <br/>
                     <button is="emby-button" type="submit" class="raised button-submit block">
@@ -141,6 +164,20 @@
                         document.getElementById('ForeignMovieLogoPreference').value = config.ForeignMovieLogoPreference == null ? 1 : config.ForeignMovieLogoPreference;
                         document.getElementById('RussianMoviePosterPreference').value = config.RussianMoviePosterPreference == null ? 0 : config.RussianMoviePosterPreference;
                         document.getElementById('RussianMovieLogoPreference').value = config.RussianMovieLogoPreference == null ? 0 : config.RussianMovieLogoPreference;
+                        document.getElementById('CollectionPosterPreference').value = config.CollectionPosterPreference == null ? 1 : config.CollectionPosterPreference;
+                        ApiClient.ajax({
+                            url: ApiClient.getUrl('ChooseYourMeta/Status'),
+                            type: 'GET',
+                            dataType: 'json'
+                        }).then(function (status) {
+                            var available = status.jellyfinTmdbAvailable === true || status.JellyfinTmdbAvailable === true;
+                            document.getElementById('TmdbIntegrationStatus').textContent = available
+                                ? 'Встроенная интеграция TMDB найдена.'
+                                : 'Встроенная интеграция TMDB не найдена. Укажите собственный ключ.';
+                        }).catch(function () {
+                            document.getElementById('TmdbIntegrationStatus').textContent =
+                                'Не удалось проверить встроенную интеграцию TMDB.';
+                        });
                         Dashboard.hideLoadingMsg();
                     });
                 });
@@ -164,12 +201,33 @@
                         config.ForeignMovieLogoPreference = parseInt(document.getElementById('ForeignMovieLogoPreference').value, 10);
                         config.RussianMoviePosterPreference = parseInt(document.getElementById('RussianMoviePosterPreference').value, 10);
                         config.RussianMovieLogoPreference = parseInt(document.getElementById('RussianMovieLogoPreference').value, 10);
+                        config.CollectionPosterPreference = parseInt(document.getElementById('CollectionPosterPreference').value, 10);
 
                         ApiClient.updatePluginConfiguration(PluginConfig.pluginId, config).then(Dashboard.processPluginConfigurationUpdateResult);
                     });
 
                     e.preventDefault();
                     return false;
+                });
+
+            document.getElementById('ConfigureLibraries')
+                .addEventListener('click', function () {
+                    var resultElement = document.getElementById('ConfigureLibrariesResult');
+                    Dashboard.showLoadingMsg();
+                    ApiClient.ajax({
+                        url: ApiClient.getUrl('ChooseYourMeta/ConfigureLibraries'),
+                        type: 'POST',
+                        dataType: 'json'
+                    }).then(function (result) {
+                        var updated = result.updatedLibraries || result.UpdatedLibraries || [];
+                        resultElement.textContent = updated.length
+                            ? 'Настроено библиотек: ' + updated.join(', ')
+                            : 'Все подходящие библиотеки уже настроены.';
+                        Dashboard.hideLoadingMsg();
+                    }).catch(function () {
+                        resultElement.textContent = 'Не удалось изменить настройки библиотек. Проверьте журнал Jellyfin.';
+                        Dashboard.hideLoadingMsg();
+                    });
                 });
         </script>
     </div>

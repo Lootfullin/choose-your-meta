@@ -14,7 +14,7 @@ public sealed class RussianMovieImageSelectorTests
     {
         var images = ImagesWithBothLanguages();
 
-        var result = RussianMovieImageSelector.Select(
+        var result = ArtworkSelector.Select(
             images,
             ArtworkLanguagePreference.RussianFirst,
             ArtworkLanguagePreference.RussianFirst,
@@ -33,7 +33,7 @@ public sealed class RussianMovieImageSelectorTests
     [Fact]
     public void Select_EnglishFirst_PutsEnglishBeforeRussian()
     {
-        var result = RussianMovieImageSelector.Select(
+        var result = ArtworkSelector.Select(
             ImagesWithBothLanguages(),
             ArtworkLanguagePreference.EnglishFirst,
             ArtworkLanguagePreference.EnglishFirst,
@@ -47,7 +47,7 @@ public sealed class RussianMovieImageSelectorTests
     [Fact]
     public void Select_DisabledType_ReturnsOnlyEnabledType()
     {
-        var result = RussianMovieImageSelector.Select(
+        var result = ArtworkSelector.Select(
             ImagesWithBothLanguages(),
             ArtworkLanguagePreference.Disabled,
             ArtworkLanguagePreference.RussianFirst,
@@ -59,7 +59,7 @@ public sealed class RussianMovieImageSelectorTests
     [Fact]
     public void Select_OrdersWithinLanguageByRatingThenVotes()
     {
-        var images = new TmdbMovieImages
+        var images = new TmdbArtworkImages
         {
             Posters =
             [
@@ -69,7 +69,7 @@ public sealed class RussianMovieImageSelectorTests
             ]
         };
 
-        var result = RussianMovieImageSelector.Select(
+        var result = ArtworkSelector.Select(
             images,
             ArtworkLanguagePreference.RussianFirst,
             ArtworkLanguagePreference.Disabled,
@@ -144,9 +144,39 @@ public sealed class RussianMovieImageSelectorTests
         Assert.Equal("en", Assert.Single(movie.Images.Logos!).Language);
     }
 
-    private static TmdbMovieImages ImagesWithBothLanguages()
+    [Fact]
+    public void CollectionArtwork_DeserializesPostersWithoutLogos()
     {
-        return new TmdbMovieImages
+        const string Json = """
+            {
+              "images": {
+                "posters": [{
+                  "file_path": "/collection.jpg",
+                  "iso_639_1": "ru"
+                }],
+                "backdrops": []
+              }
+            }
+            """;
+
+        var collection =
+            JsonSerializer.Deserialize<TmdbCollectionArtworkResponse>(
+                Json,
+                JsonOptions.Default);
+        var selected = ArtworkSelector.Select(
+            collection!.Images,
+            ArtworkLanguagePreference.RussianFirst,
+            ArtworkLanguagePreference.Disabled,
+            "test");
+
+        Assert.Equal(
+            ImageType.Primary,
+            Assert.Single(selected).Type);
+    }
+
+    private static TmdbArtworkImages ImagesWithBothLanguages()
+    {
+        return new TmdbArtworkImages
         {
             Posters =
             [

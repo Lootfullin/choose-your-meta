@@ -68,7 +68,8 @@ public sealed class RussianMovieImageProvider : IRemoteImageProvider, IDisposabl
         CancellationToken cancellationToken)
     {
         var config = Configuration;
-        if (string.IsNullOrWhiteSpace(config.TmdbApiKey)
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
+        if (string.IsNullOrWhiteSpace(tmdbApiKey)
             || (config.ForeignMoviePosterPreference
                     == ArtworkLanguagePreference.Disabled
                 && config.ForeignMovieLogoPreference
@@ -87,7 +88,7 @@ public sealed class RussianMovieImageProvider : IRemoteImageProvider, IDisposabl
 
             var tmdbId = await ResolveTmdbId(
                 item,
-                config.TmdbApiKey,
+                tmdbApiKey,
                 httpClient,
                 cancellationToken);
             if (tmdbId <= 0)
@@ -97,7 +98,7 @@ public sealed class RussianMovieImageProvider : IRemoteImageProvider, IDisposabl
 
             var detailsUrl =
                 $"{TmdbApiBase}/movie/{tmdbId.ToString(CultureInfo.InvariantCulture)}"
-                + $"?api_key={Uri.EscapeDataString(config.TmdbApiKey)}"
+                + $"?api_key={Uri.EscapeDataString(tmdbApiKey)}"
                 + "&language=ru-RU"
                 + "&append_to_response=images"
                 + "&include_image_language=ru,en";
@@ -124,7 +125,7 @@ public sealed class RussianMovieImageProvider : IRemoteImageProvider, IDisposabl
             var logoPreference = isRussianMovie
                 ? config.RussianMovieLogoPreference
                 : config.ForeignMovieLogoPreference;
-            var result = RussianMovieImageSelector.Select(
+            var result = ArtworkSelector.Select(
                 movie?.Images,
                 posterPreference,
                 logoPreference,
@@ -264,14 +265,14 @@ public sealed class RussianMovieImageProvider : IRemoteImageProvider, IDisposabl
     }
 }
 
-internal static class RussianMovieImageSelector
+internal static class ArtworkSelector
 {
     private const string OriginalImageBase = "https://image.tmdb.org/t/p/original";
     private const string PosterThumbnailBase = "https://image.tmdb.org/t/p/w342";
     private const string LogoThumbnailBase = "https://image.tmdb.org/t/p/w500";
 
     internal static List<RemoteImageInfo> Select(
-        TmdbMovieImages? images,
+        TmdbArtworkImages? images,
         ArtworkLanguagePreference posterPreference,
         ArtworkLanguagePreference logoPreference,
         string providerName)
@@ -394,7 +395,7 @@ internal sealed class TmdbMovieArtworkResponse
     [JsonPropertyName("original_language")]
     public string? OriginalLanguage { get; set; }
 
-    public TmdbMovieImages? Images { get; set; }
+    public TmdbArtworkImages? Images { get; set; }
 }
 
 internal sealed class TmdbProductionCountry
@@ -403,7 +404,7 @@ internal sealed class TmdbProductionCountry
     public string? Code { get; set; }
 }
 
-internal sealed class TmdbMovieImages
+internal sealed class TmdbArtworkImages
 {
     public List<TmdbImageFile>? Posters { get; set; }
 

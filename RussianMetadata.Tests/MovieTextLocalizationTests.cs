@@ -95,5 +95,8 @@ public sealed class MovieTextLocalizationTests
         Assert.Equal(
             ArtworkLanguagePreference.RussianFirst,
             configuration.RussianMovieLogoPreference);
+        Assert.Equal(
+            ArtworkLanguagePreference.EnglishFirst,
+            configuration.CollectionPosterPreference);
     }
 }

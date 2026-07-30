@@ -19,10 +19,6 @@ if ! command -v dotnet >/dev/null 2>&1; then
     echo ".NET 9 SDK is required." >&2
     exit 1
 fi
-if [[ "$(dotnet --version)" != 9.* ]]; then
-    echo ".NET 9 SDK is required." >&2
-    exit 1
-fi
 if ! command -v zip >/dev/null 2>&1; then
     echo "The zip command is required." >&2
     exit 1

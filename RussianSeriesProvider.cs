@@ -39,32 +39,67 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
 
     public string Name => "Choose your Meta!";
 
-    public Task<MetadataResult<Series>> GetMetadata(SeriesInfo info, CancellationToken cancellationToken)
+    public async Task<MetadataResult<Series>> GetMetadata(
+        SeriesInfo info,
+        CancellationToken cancellationToken)
     {
         var result = new MetadataResult<Series>();
 
         string? imdbId = ExtractImdbId(info);
+        int? tmdbId = MovieLookup.ExtractTmdbId(info.ProviderIds);
 
         _logger.LogInformation(
-            "RussianMetadata (Series): GetMetadata — Name='{Name}', Path='{Path}', ExtractedImdbId={ImdbId}",
-            info.Name, info.Path, imdbId ?? "N/A");
+            "RussianMetadata (Series): GetMetadata — Name='{Name}', Path='{Path}', TmdbId={TmdbId}, ImdbId={ImdbId}",
+            info.Name,
+            info.Path,
+            tmdbId?.ToString(CultureInfo.InvariantCulture) ?? "N/A",
+            imdbId ?? "N/A");
 
-        // Pass IMDb ID to Jellyfin so subsequent FetchAsync can find it in ProviderIds.
-        // Only set HasMetadata=true when we have something to contribute.
-        if (!string.IsNullOrEmpty(imdbId))
+        var config = Plugin.Configuration;
+        bool tmdbSuccess = false;
+        var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
+        if (!string.IsNullOrWhiteSpace(tmdbApiKey))
         {
-            result.HasMetadata = true;
-            result.Item = new Series();
-            result.Item.SetProviderId("Imdb", imdbId);
-
-            // Preserve the original name so Jellyfin doesn't lose the item title.
-            if (!string.IsNullOrEmpty(info.Name))
-            {
-                result.Item.Name = info.Name;
-            }
+            tmdbSuccess = await TryTmdbSeries(
+                info.Name,
+                tmdbId,
+                imdbId,
+                config,
+                tmdbApiKey,
+                result,
+                includePeople: true,
+                cancellationToken);
         }
 
-        return Task.FromResult(result);
+        bool wikidataSuccess = false;
+        if (!tmdbSuccess && !string.IsNullOrWhiteSpace(imdbId))
+        {
+            wikidataSuccess = await TryWikidata(
+                imdbId,
+                config,
+                result,
+                cancellationToken);
+        }
+
+        if (!tmdbSuccess && !wikidataSuccess)
+        {
+            return new MetadataResult<Series>();
+        }
+
+        result.Item ??= new Series();
+        if (string.IsNullOrWhiteSpace(result.Item.Name))
+        {
+            result.Item.Name = info.Name;
+        }
+
+        if (!string.IsNullOrWhiteSpace(imdbId))
+        {
+            result.Item.SetProviderId("Imdb", imdbId);
+        }
+
+        result.HasMetadata = true;
+        result.ResultLanguage = "ru";
+        return result;
     }
 
     // ───── ICustomMetadataProvider: runs AFTER all remote providers to apply Russian data ─────
@@ -92,6 +127,7 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
         // which may incorrectly contain the parent/root library folder name.
         var config = Plugin.Configuration;
         var seriesName = item.Name;
+        int? knownTmdbId = MovieLookup.ExtractTmdbId(item.ProviderIds);
         if (!string.IsNullOrEmpty(item.Path))
         {
             var folderName = GetFolderNameFromPath(item.Path);
@@ -124,10 +160,12 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             _logger.LogInformation("RussianMetadata (Series): FetchAsync Step 1 — Trying TMDB for {Name}", seriesName);
             tmdbSuccess = await TryTmdbSeries(
                 seriesName,
+                knownTmdbId,
                 imdbId,
                 config,
                 tmdbApiKey,
                 tempResult,
+                includePeople: false,
                 cancellationToken);
         }
 
@@ -168,10 +206,13 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
 
     private async Task<bool> TryTmdbSeries(
         string name,
+        int? knownTmdbId,
         string? imdbId,
         Configuration.PluginConfiguration config,
         string tmdbApiKey,
-        MetadataResult<Series> result, CancellationToken cancellationToken)
+        MetadataResult<Series> result,
+        bool includePeople,
+        CancellationToken cancellationToken)
     {
         _logger.LogInformation("RussianMetadata (Series): Trying TMDB for {Name}", name);
 
@@ -182,10 +223,10 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
-            int? tmdbId = null;
+            int? tmdbId = knownTmdbId;
 
             // Path A: Find by IMDb ID
-            if (!string.IsNullOrEmpty(imdbId))
+            if (tmdbId is null && !string.IsNullOrEmpty(imdbId))
             {
                 var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
                 _logger.LogInformation("RussianMetadata (Series): TMDB find URL (without key): {Url}", findUrl.Replace(tmdbApiKey, "***"));
@@ -245,6 +286,10 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
 
             // Step 2: Fetch details in Russian
             var detailsUrl = $"{TmdbApiBase}/tv/{tmdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU";
+            if (includePeople)
+            {
+                detailsUrl += "&append_to_response=credits";
+            }
             _logger.LogInformation("RussianMetadata (Series): TMDB details URL (without key): {Url}", detailsUrl.Replace(tmdbApiKey, "***"));
             _logger.LogInformation("RussianMetadata (Series): TMDB details for ID {TmdbId}", tmdbId);
 
@@ -282,6 +327,28 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             if (!string.IsNullOrEmpty(tvDetails.OriginalName))
             {
                 result.Item.OriginalTitle = tvDetails.OriginalName;
+            }
+
+            if (config.EnableRussianGenres
+                && tvDetails.Genres is { Count: > 0 })
+            {
+                result.Item.Genres = tvDetails.Genres
+                    .Select(genre => genre.Name?.Trim())
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Cast<string>()
+                    .ToArray();
+            }
+
+            if (includePeople
+                && config.EnableRussianPeople
+                && tvDetails.Credits is not null)
+            {
+                await TmdbPeopleLocalization.AddLocalizedPeople(
+                    tvDetails.Credits,
+                    result,
+                    _httpClientFactory,
+                    _logger,
+                    cancellationToken);
             }
 
             result.Item.SetProviderId("Tmdb", tmdbId.Value.ToString(CultureInfo.InvariantCulture));
@@ -786,6 +853,8 @@ internal class SeriesTmdbTvDetails
     public string? OriginalName { get; set; }
     [JsonPropertyName("first_air_date")]
     public string? FirstAirDate { get; set; }
+    public List<TmdbGenre>? Genres { get; set; }
+    public TmdbCredits? Credits { get; set; }
 }
 
 internal class SeriesTmdbTvSearchResponse

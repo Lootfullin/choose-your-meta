@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Net;
 using System.Text.Json;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
@@ -103,5 +104,21 @@ public sealed class SeriesSeasonMetadataTests
 
         Assert.Equal("Шон Коннери", person.Name);
         Assert.Equal("738", person.ProviderIds["Tmdb"]);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TooManyRequests, true)]
+    [InlineData(HttpStatusCode.BadGateway, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, true)]
+    [InlineData(HttpStatusCode.GatewayTimeout, true)]
+    [InlineData(HttpStatusCode.BadRequest, false)]
+    [InlineData(HttpStatusCode.NotFound, false)]
+    public void PersonLookup_RetriesOnlyTransientHttpFailures(
+        HttpStatusCode statusCode,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            TmdbPeopleLocalization.ShouldRetry(statusCode));
     }
 }

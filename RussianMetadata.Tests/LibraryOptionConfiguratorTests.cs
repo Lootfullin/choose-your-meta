@@ -47,6 +47,9 @@ public sealed class LibraryOptionConfiguratorTests
             movie.ImageFetcherOrder[0]);
         Assert.DoesNotContain("Russian Metadata", movie.MetadataFetchers);
         Assert.NotNull(options.GetTypeOptions("BoxSet"));
+        Assert.Equal(
+            LibraryOptionConfigurator.CustomArtworkProviderName,
+            options.GetTypeOptions("BoxSet")!.ImageFetcherOrder[0]);
     }
 
     [Fact]

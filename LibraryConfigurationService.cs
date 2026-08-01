@@ -73,6 +73,7 @@ internal static class LibraryOptionConfigurator
     internal const string MetadataProviderName = "Choose your Meta!";
     internal const string ImageProviderName =
         "Choose your Meta! — изображения";
+    internal const string CustomArtworkProviderName = "Cowabunga Custom Artwork";
 
     private static readonly string[] LegacyMetadataNames =
     [
@@ -152,15 +153,18 @@ internal static class LibraryOptionConfigurator
 
             if (type is "Movie" or "BoxSet")
             {
-                var imageFetchers = Prepend(
+                var preferredImageProviders = type == "BoxSet"
+                    ? new[] { CustomArtworkProviderName, ImageProviderName }
+                    : new[] { ImageProviderName };
+                var imageFetchers = PrependMany(
                     itemOptions.ImageFetchers,
-                    ImageProviderName,
+                    preferredImageProviders,
                     LegacyImageNames);
                 itemOptions.ImageFetchers = imageFetchers.Values;
                 changed |= imageFetchers.Changed;
-                var imageOrder = Prepend(
+                var imageOrder = PrependMany(
                     itemOptions.ImageFetcherOrder,
-                    ImageProviderName,
+                    preferredImageProviders,
                     LegacyImageNames);
                 itemOptions.ImageFetcherOrder = imageOrder.Values;
                 changed |= imageOrder.Changed;
@@ -180,13 +184,18 @@ internal static class LibraryOptionConfigurator
         string providerName,
         IReadOnlyCollection<string> legacyNames)
     {
+        return PrependMany(values, [providerName], legacyNames);
+    }
+
+    private static (string[] Values, bool Changed) PrependMany(
+        string[]? values,
+        IReadOnlyCollection<string> providerNames,
+        IReadOnlyCollection<string> legacyNames)
+    {
         values ??= [];
-        var updated = new[] { providerName }
+        var updated = providerNames
             .Concat(values.Where(value =>
-                !string.Equals(
-                    value,
-                    providerName,
-                    StringComparison.OrdinalIgnoreCase)
+                !providerNames.Contains(value, StringComparer.OrdinalIgnoreCase)
                 && !legacyNames.Contains(
                     value,
                     StringComparer.OrdinalIgnoreCase)))

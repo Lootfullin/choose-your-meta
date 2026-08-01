@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '1.4.2',
-    [string]$JellyfinVersion = '10.11.11'
+    [string]$Version = '1.4.3',
+    [string]$JellyfinVersion = '10.11.11',
+    [string]$DotnetPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,7 +12,9 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $localDotnet = Join-Path $repoRoot '.dotnet\dotnet.exe'
-$dotnet = if (Test-Path -LiteralPath $localDotnet) {
+$dotnet = if (-not [string]::IsNullOrWhiteSpace($DotnetPath)) {
+    (Resolve-Path -LiteralPath $DotnetPath -ErrorAction Stop).Path
+} elseif (Test-Path -LiteralPath $localDotnet) {
     $localDotnet
 } else {
     (Get-Command dotnet -ErrorAction Stop).Source
@@ -63,7 +66,7 @@ Copy-Item -LiteralPath $dll -Destination $stage
 
 $meta = @{
     category = 'General'
-    changelog = 'Prioritize matching movie titles over exact release years and reject unrelated TMDB results.'
+    changelog = 'Keep Russian collection titles after metadata merges and prioritize Cowabunga Custom Artwork for collection images.'
     description = 'Choose Russian or English metadata, posters, and logos for movies and collections.'
     guid = 'a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b'
     name = 'Choose your Meta!'

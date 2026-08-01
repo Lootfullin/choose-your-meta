@@ -19,7 +19,8 @@ using RussianMetadata.Configuration;
 namespace RussianMetadata;
 
 public sealed class ChooseYourMetaBoxSetProvider
-    : IRemoteMetadataProvider<BoxSet, BoxSetInfo>
+    : IRemoteMetadataProvider<BoxSet, BoxSetInfo>,
+      ICustomMetadataProvider<BoxSet>
 {
     private const string TmdbApiBase = "https://api.themoviedb.org/3";
     private readonly IHttpClientFactory _httpClientFactory;
@@ -110,6 +111,59 @@ public sealed class ChooseYourMetaBoxSetProvider
                 ex,
                 "ChooseYourMeta: TMDB collection metadata failed");
             return result;
+        }
+    }
+
+    public async Task<ItemUpdateType> FetchAsync(
+        BoxSet item,
+        MetadataRefreshOptions options,
+        CancellationToken cancellationToken)
+    {
+        var config = Configuration;
+        if (!config.EnableRussianTitles && !config.EnableRussianOverviews)
+        {
+            return ItemUpdateType.None;
+        }
+
+        var tmdbId = ParseTmdbId(item.GetProviderId(MetadataProvider.Tmdb));
+        var apiKey = TmdbApiKeyResolver.Resolve(config);
+        if (tmdbId <= 0 || string.IsNullOrWhiteSpace(apiKey))
+        {
+            return ItemUpdateType.None;
+        }
+
+        try
+        {
+            using var httpClient = CreateHttpClient(config);
+            var collection = await GetCollection(tmdbId, apiKey, httpClient, cancellationToken);
+            if (collection is null)
+            {
+                return ItemUpdateType.None;
+            }
+
+            var changed = false;
+            var russianName = MovieTextLocalization.RussianOrNull(collection.Name);
+            if (config.EnableRussianTitles && !string.IsNullOrWhiteSpace(russianName) && item.Name != russianName)
+            {
+                item.Name = russianName;
+                changed = true;
+            }
+
+            var russianOverview = MovieTextLocalization.RussianOrNull(collection.Overview);
+            if (config.EnableRussianOverviews
+                && !string.IsNullOrWhiteSpace(russianOverview)
+                && item.Overview != russianOverview)
+            {
+                item.Overview = russianOverview;
+                changed = true;
+            }
+
+            return changed ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "ChooseYourMeta: final BoxSet localization failed for TMDB {TmdbId}", tmdbId);
+            return ItemUpdateType.None;
         }
     }
 

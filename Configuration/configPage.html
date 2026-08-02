@@ -154,6 +154,23 @@
                 pluginId: "a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b"
             };
 
+            function artworkPreference(value, fallback) {
+                var values = {
+                    RussianFirst: '0',
+                    EnglishFirst: '1',
+                    Disabled: '2'
+                };
+                if (value === null || value === undefined || value === '') {
+                    return fallback;
+                }
+
+                if (/^[0-2]$/.test(String(value))) {
+                    return String(value);
+                }
+
+                return values[value] || fallback;
+            }
+
             document.querySelector('.configPage')
                 .addEventListener('pageshow', function () {
                     Dashboard.showLoadingMsg();
@@ -168,12 +185,12 @@
                         document.getElementById('EnableRussianGenres').checked = config.EnableRussianGenres !== false;
                         document.getElementById('EnableRussianStudios').checked = config.EnableRussianStudios !== false;
                         document.getElementById('EnableRussianPeople').checked = config.EnableRussianPeople !== false;
-                        document.getElementById('ForeignMoviePosterPreference').value = config.ForeignMoviePosterPreference == null ? 1 : config.ForeignMoviePosterPreference;
-                        document.getElementById('ForeignMovieLogoPreference').value = config.ForeignMovieLogoPreference == null ? 1 : config.ForeignMovieLogoPreference;
-                        document.getElementById('RussianMoviePosterPreference').value = config.RussianMoviePosterPreference == null ? 0 : config.RussianMoviePosterPreference;
-                        document.getElementById('RussianMovieLogoPreference').value = config.RussianMovieLogoPreference == null ? 0 : config.RussianMovieLogoPreference;
-                        document.getElementById('CollectionPosterPreference').value = config.CollectionPosterPreference == null ? 1 : config.CollectionPosterPreference;
-                        document.getElementById('CollectionLogoPreference').value = config.CollectionLogoPreference == null ? 1 : config.CollectionLogoPreference;
+                        document.getElementById('ForeignMoviePosterPreference').value = artworkPreference(config.ForeignMoviePosterPreference, '1');
+                        document.getElementById('ForeignMovieLogoPreference').value = artworkPreference(config.ForeignMovieLogoPreference, '1');
+                        document.getElementById('RussianMoviePosterPreference').value = artworkPreference(config.RussianMoviePosterPreference, '0');
+                        document.getElementById('RussianMovieLogoPreference').value = artworkPreference(config.RussianMovieLogoPreference, '0');
+                        document.getElementById('CollectionPosterPreference').value = artworkPreference(config.CollectionPosterPreference, '1');
+                        document.getElementById('CollectionLogoPreference').value = artworkPreference(config.CollectionLogoPreference, '1');
                         ApiClient.ajax({
                             url: ApiClient.getUrl('ChooseYourMeta/Status'),
                             type: 'GET',

@@ -54,11 +54,6 @@ public partial class RussianMovieProvider :
         CancellationToken cancellationToken)
     {
         var config = Plugin.Configuration;
-        if (!config.EnableRussianTitles)
-        {
-            return ItemUpdateType.None;
-        }
-
         int? tmdbId = MovieLookup.ExtractTmdbId(item.ProviderIds);
         if (tmdbId is null)
         {
@@ -101,29 +96,28 @@ public partial class RussianMovieProvider :
             var details = JsonSerializer.Deserialize<TmdbMovieDetails>(
                 json,
                 JsonOptions.Default);
-            var russianTitle = MovieTextLocalization.RussianOrNull(details?.Title);
-            if (string.IsNullOrWhiteSpace(russianTitle))
+            if (details is null)
             {
+                return ItemUpdateType.None;
+            }
+
+            var changed = ApplyTmdbCollection(item, details.BelongsToCollection);
+            var russianTitle = MovieTextLocalization.RussianOrNull(details.Title);
+            if (config.EnableRussianTitles
+                && !string.IsNullOrWhiteSpace(russianTitle)
+                && !string.Equals(item.Name, russianTitle, StringComparison.Ordinal))
+            {
+                var previousName = item.Name;
+                item.Name = russianTitle;
+                changed = true;
                 _logger.LogInformation(
-                    "ChooseYourMeta: TMDB {TmdbId} has no Russian title; keeping '{Name}'",
+                    "ChooseYourMeta: Post-refresh title applied for TMDB {TmdbId}: '{PreviousName}' -> '{RussianTitle}'",
                     tmdbId,
-                    item.Name);
-                return ItemUpdateType.None;
+                    previousName,
+                    russianTitle);
             }
 
-            if (string.Equals(item.Name, russianTitle, StringComparison.Ordinal))
-            {
-                return ItemUpdateType.None;
-            }
-
-            var previousName = item.Name;
-            item.Name = russianTitle;
-            _logger.LogInformation(
-                "ChooseYourMeta: Post-refresh title applied for TMDB {TmdbId}: '{PreviousName}' -> '{RussianTitle}'",
-                tmdbId,
-                previousName,
-                russianTitle);
-            return ItemUpdateType.MetadataEdit;
+            return changed ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -351,6 +345,7 @@ public partial class RussianMovieProvider :
             }
 
             result.Item.SetProviderId("Tmdb", resolvedTmdbId.Value.ToString(CultureInfo.InvariantCulture));
+            ApplyTmdbCollection(result.Item, movieDetails.BelongsToCollection);
             if (!string.IsNullOrWhiteSpace(movieDetails.ImdbId))
             {
                 result.Item.SetProviderId("Imdb", movieDetails.ImdbId);
@@ -368,6 +363,33 @@ public partial class RussianMovieProvider :
             _logger.LogWarning(ex, "RussianMetadata: TMDB failed for {ImdbId}, will fallback", imdbId);
             return false;
         }
+    }
+
+    internal static bool ApplyTmdbCollection(
+        Movie movie,
+        TmdbCollectionReference? collection)
+    {
+        var previousId = movie.GetProviderId(MetadataProvider.TmdbCollection);
+        var previousName = movie.TmdbCollectionName;
+        var collectionId = collection is { Id: > 0 }
+            ? collection.Id.ToString(CultureInfo.InvariantCulture)
+            : null;
+        var collectionName = string.IsNullOrWhiteSpace(collection?.Name)
+            ? null
+            : collection.Name.Trim();
+
+        if (collectionId is null)
+        {
+            movie.ProviderIds.Remove(MetadataProvider.TmdbCollection.ToString());
+        }
+        else
+        {
+            movie.SetProviderId(MetadataProvider.TmdbCollection, collectionId);
+        }
+
+        movie.TmdbCollectionName = collectionName;
+        return !string.Equals(previousId, collectionId, StringComparison.Ordinal)
+            || !string.Equals(previousName, collectionName, StringComparison.Ordinal);
     }
 
     private async Task<bool> TryWikidata(string imdbId, Configuration.PluginConfiguration config,
@@ -742,7 +764,15 @@ internal class TmdbMovieDetails
     public List<TmdbGenre>? Genres { get; set; }
     [JsonPropertyName("production_companies")]
     public List<TmdbCompany>? ProductionCompanies { get; set; }
+    [JsonPropertyName("belongs_to_collection")]
+    public TmdbCollectionReference? BelongsToCollection { get; set; }
     public TmdbCredits? Credits { get; set; }
+}
+
+internal sealed class TmdbCollectionReference
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
 }
 
 internal class TmdbGenre

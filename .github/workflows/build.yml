@@ -24,6 +24,7 @@ jobs:
           dotnet-version: 9.0.x
       - run: dotnet restore RussianMetadata.Tests/RussianMetadata.Tests.csproj
       - run: dotnet test RussianMetadata.Tests/RussianMetadata.Tests.csproj -c Release --no-restore
+      - run: node scripts/test-config-page.mjs
       - name: Upload plugin DLL
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7

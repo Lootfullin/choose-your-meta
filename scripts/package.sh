@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="${1:-1.4.5}"
+version="${1:-1.4.6}"
 jellyfin_version="${2:-10.11.11}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
@@ -51,12 +51,14 @@ dotnet publish \
 
 dll="${publish}/RussianMetadata.dll"
 test -f "${dll}"
+grep -q "<FileVersion>${version}.0</FileVersion>" \
+    "${repo_root}/RussianMetadata.csproj"
 cp -- "${dll}" "${stage}/"
 
 cat > "${stage}/meta.json" <<EOF
 {
   "category": "General",
-  "changelog": "Fix image-language preference fields so enum values display and persist correctly in Jellyfin settings.",
+  "changelog": "Fix automatic updates and settings persistence, keep Custom Artwork first for every supported media type, and perform a one-time repair refresh for existing cached artwork.",
   "description": "Choose Russian or English metadata, posters, and logos for movies and collections.",
   "guid": "a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b",
   "name": "Choose your Meta!",
@@ -66,7 +68,7 @@ cat > "${stage}/meta.json" <<EOF
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "version": "${version}.0",
   "status": "Active",
-  "autoUpdate": false
+  "autoUpdate": true
 }
 EOF
 
@@ -77,6 +79,12 @@ rm -f -- "${archive}" "${archive}.sha256"
     cd "${stage}"
     zip -q -X "${archive}" RussianMetadata.dll meta.json
 )
+
+python3 "${script_dir}/verify-package.py" \
+    "${archive}" \
+    "${version}.0" \
+    "${jellyfin_version}.0" \
+    "RussianMetadata.dll"
 
 checksum="$(shasum -a 256 "${archive}" | awk '{print $1}')"
 printf '%s  %s\n' "${checksum}" "${archive_name}" > "${archive}.sha256"

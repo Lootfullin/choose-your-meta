@@ -11,5 +11,6 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<LibraryConfigurationService>();
+        serviceCollection.AddSingleton<ArtworkPreferenceRefreshService>();
     }
 }

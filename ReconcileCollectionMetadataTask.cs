@@ -24,17 +24,20 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
     private readonly ILibraryManager _libraryManager;
     private readonly IProviderManager _providerManager;
     private readonly IFileSystem _fileSystem;
+    private readonly LibraryConfigurationService _configurationService;
     private readonly ILogger<ReconcileCollectionMetadataTask> _logger;
 
     public ReconcileCollectionMetadataTask(
         ILibraryManager libraryManager,
         IProviderManager providerManager,
         IFileSystem fileSystem,
+        LibraryConfigurationService configurationService,
         ILogger<ReconcileCollectionMetadataTask> logger)
     {
         _libraryManager = libraryManager;
         _providerManager = providerManager;
         _fileSystem = fileSystem;
+        _configurationService = configurationService;
         _logger = logger;
     }
 
@@ -53,6 +56,7 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
 
     public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
+        _configurationService.Apply();
         if (Plugin.Instance?.Configuration.EnableRussianTitles != true)
         {
             progress.Report(100);

@@ -151,11 +151,11 @@ internal static class LibraryOptionConfigurator
             itemOptions.MetadataFetcherOrder = metadataOrder.Values;
             changed |= metadataOrder.Changed;
 
-            if (type is "Movie" or "BoxSet")
+            if (type is "Movie" or "BoxSet" or "Series" or "Season")
             {
-                var preferredImageProviders = type == "BoxSet"
+                var preferredImageProviders = type is "Movie" or "BoxSet"
                     ? new[] { CustomArtworkProviderName, ImageProviderName }
-                    : new[] { ImageProviderName };
+                    : new[] { CustomArtworkProviderName };
                 var imageFetchers = PrependMany(
                     itemOptions.ImageFetchers,
                     preferredImageProviders,

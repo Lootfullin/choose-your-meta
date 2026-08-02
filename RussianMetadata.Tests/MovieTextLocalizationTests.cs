@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Model.Entities;
 using RussianMetadata.Configuration;
 using Xunit;
 
@@ -70,6 +72,69 @@ public sealed class MovieTextLocalizationTests
         Assert.Equal("Приключения", Assert.Single(details.Genres!).Name);
         Assert.Equal(33, Assert.Single(details.ProductionCompanies!).Id);
         Assert.Equal(2231, Assert.Single(details.Credits!.Cast!).Id);
+    }
+
+    [Fact]
+    public void TmdbMovieDetails_DeserializesCollectionMembership()
+    {
+        const string Json = """
+            {
+              "id": 348,
+              "title": "Чужой",
+              "belongs_to_collection": {
+                "id": 8091,
+                "name": "Alien Collection"
+              }
+            }
+            """;
+
+        var details = JsonSerializer.Deserialize<TmdbMovieDetails>(
+            Json,
+            JsonOptions.Default);
+
+        Assert.NotNull(details?.BelongsToCollection);
+        Assert.Equal(8091, details.BelongsToCollection.Id);
+        Assert.Equal("Alien Collection", details.BelongsToCollection.Name);
+    }
+
+    [Fact]
+    public void ApplyTmdbCollection_PreservesBoxSetManagerIdentity()
+    {
+        var movie = new Movie();
+
+        var changed = RussianMovieProvider.ApplyTmdbCollection(
+            movie,
+            new TmdbCollectionReference
+            {
+                Id = 8091,
+                Name = " Alien Collection "
+            });
+
+        Assert.True(changed);
+        Assert.Equal(
+            "8091",
+            movie.GetProviderId(MetadataProvider.TmdbCollection));
+        Assert.Equal("Alien Collection", movie.TmdbCollectionName);
+        Assert.False(RussianMovieProvider.ApplyTmdbCollection(
+            movie,
+            new TmdbCollectionReference
+            {
+                Id = 8091,
+                Name = "Alien Collection"
+            }));
+    }
+
+    [Fact]
+    public void ApplyTmdbCollection_RemovesStaleMembership()
+    {
+        var movie = new Movie { TmdbCollectionName = "Alien Collection" };
+        movie.SetProviderId(MetadataProvider.TmdbCollection, "8091");
+
+        var changed = RussianMovieProvider.ApplyTmdbCollection(movie, null);
+
+        Assert.True(changed);
+        Assert.Null(movie.GetProviderId(MetadataProvider.TmdbCollection));
+        Assert.Null(movie.TmdbCollectionName);
     }
 
     [Fact]

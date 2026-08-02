@@ -33,4 +33,5 @@ public class PluginConfiguration : BasePluginConfiguration
     public string ProxyUrl { get; set; } = "";
     public string ProxyUsername { get; set; } = "";
     public string ProxyPassword { get; set; } = "";
+    public int ArtworkRefreshSchemaVersion { get; set; }
 }

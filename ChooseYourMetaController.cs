@@ -10,17 +10,28 @@ namespace RussianMetadata;
 public sealed class ChooseYourMetaController : ControllerBase
 {
     private readonly LibraryConfigurationService _configurationService;
+    private readonly ArtworkPreferenceRefreshService _artworkRefreshService;
 
     public ChooseYourMetaController(
-        LibraryConfigurationService configurationService)
+        LibraryConfigurationService configurationService,
+        ArtworkPreferenceRefreshService artworkRefreshService)
     {
         _configurationService = configurationService;
+        _artworkRefreshService = artworkRefreshService;
     }
 
     [HttpPost("ConfigureLibraries")]
     public ActionResult<LibraryConfigurationResult> ConfigureLibraries()
     {
         return Ok(_configurationService.Apply());
+    }
+
+    [HttpPost("RefreshArtworkPreferences")]
+    public ActionResult<ArtworkPreferenceRefreshResult> RefreshArtworkPreferences(
+        [FromBody] ArtworkPreferenceRefreshRequest request)
+    {
+        _configurationService.Apply();
+        return Ok(_artworkRefreshService.Queue(request));
     }
 
     [HttpGet("Status")]
@@ -38,3 +49,9 @@ public sealed class ChooseYourMetaController : ControllerBase
 public sealed record ChooseYourMetaStatus(
     bool JellyfinTmdbAvailable,
     bool JellyfinFanartAvailable);
+
+public sealed record ArtworkPreferenceRefreshRequest(
+    bool MoviePosters,
+    bool MovieLogos,
+    bool CollectionPosters,
+    bool CollectionLogos);

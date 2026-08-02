@@ -25,10 +25,13 @@ jobs:
       - run: dotnet restore RussianMetadata.Tests/RussianMetadata.Tests.csproj
       - run: dotnet test RussianMetadata.Tests/RussianMetadata.Tests.csproj -c Release --no-restore
       - run: node scripts/test-config-page.mjs
+      - name: Build and verify release package
+        if: runner.os == 'Linux'
+        run: ./scripts/package.sh 1.4.6 10.11.11
       - name: Upload plugin DLL
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7
         with:
-          name: ChooseYourMeta-1.4.2
+          name: ChooseYourMeta-build
           path: bin/Release/net9.0/RussianMetadata.dll
           if-no-files-found: error

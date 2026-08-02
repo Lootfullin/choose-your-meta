@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '1.4.3',
+    [string]$Version = '1.4.6',
     [string]$JellyfinVersion = '10.11.11',
     [string]$DotnetPath
 )
@@ -62,11 +62,14 @@ $dll = Join-Path $publish 'RussianMetadata.dll'
 if (-not (Test-Path -LiteralPath $dll)) {
     throw 'Published plugin DLL was not found.'
 }
+if ((Get-Item -LiteralPath $dll).VersionInfo.FileVersion -ne "$Version.0") {
+    throw 'Published plugin DLL version does not match the requested version.'
+}
 Copy-Item -LiteralPath $dll -Destination $stage
 
 $meta = @{
     category = 'General'
-    changelog = 'Keep Russian collection titles after metadata merges and prioritize Cowabunga Custom Artwork for collection images.'
+    changelog = 'Fix settings persistence and provider ordering. Mark stale plugin versions deleted and retry directory cleanup so Jellyfin cannot fall back to an older build.'
     description = 'Choose Russian or English metadata, posters, and logos for movies and collections.'
     guid = 'a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b'
     name = 'Choose your Meta!'
@@ -76,7 +79,7 @@ $meta = @{
     timestamp = [DateTime]::UtcNow.ToString('o')
     version = "$Version.0"
     status = 'Active'
-    autoUpdate = $false
+    autoUpdate = $true
 }
 $metaPath = Join-Path $stage 'meta.json'
 $metaJson = ConvertTo-Json -InputObject $meta
@@ -89,6 +92,36 @@ if (Test-Path -LiteralPath $archive) {
     Remove-Item -LiteralPath $archive -Force
 }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $archive
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$package = [System.IO.Compression.ZipFile]::OpenRead($archive)
+try {
+    $entries = @($package.Entries | Where-Object { $_.Name } | ForEach-Object FullName)
+    $expectedEntries = @('meta.json', 'RussianMetadata.dll')
+    if (@(Compare-Object $entries $expectedEntries).Count -ne 0) {
+        throw "Package root is invalid: $($entries -join ', ')."
+    }
+
+    $metaEntry = $package.GetEntry('meta.json')
+    $reader = [System.IO.StreamReader]::new($metaEntry.Open())
+    try {
+        $packagedMeta = $reader.ReadToEnd() | ConvertFrom-Json
+    } finally {
+        $reader.Dispose()
+    }
+
+    if ($packagedMeta.autoUpdate -ne $true) {
+        throw 'Packaged meta.json must set autoUpdate to true.'
+    }
+    if ($packagedMeta.version -ne "$Version.0") {
+        throw "Packaged version is '$($packagedMeta.version)'."
+    }
+    if ($packagedMeta.targetAbi -ne "$JellyfinVersion.0") {
+        throw "Packaged target ABI is '$($packagedMeta.targetAbi)'."
+    }
+} finally {
+    $package.Dispose()
+}
 
 $checksum = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash
 $checksumPath = "$archive.sha256"

@@ -43,8 +43,11 @@ public sealed class LibraryOptionConfiguratorTests
             LibraryOptionConfigurator.MetadataProviderName,
             movie.MetadataFetcherOrder[0]);
         Assert.Equal(
-            LibraryOptionConfigurator.ImageProviderName,
+            LibraryOptionConfigurator.CustomArtworkProviderName,
             movie.ImageFetcherOrder[0]);
+        Assert.Equal(
+            LibraryOptionConfigurator.ImageProviderName,
+            movie.ImageFetcherOrder[1]);
         Assert.DoesNotContain("Russian Metadata", movie.MetadataFetchers);
         Assert.NotNull(options.GetTypeOptions("BoxSet"));
         Assert.Equal(
@@ -82,7 +85,7 @@ public sealed class LibraryOptionConfiguratorTests
     }
 
     [Fact]
-    public void Apply_TvLibrary_DoesNotAddImageProvider()
+    public void Apply_TvLibrary_AddsCustomArtworkForSeriesAndSeasons()
     {
         var options = new LibraryOptions();
 
@@ -90,9 +93,13 @@ public sealed class LibraryOptionConfiguratorTests
             options,
             CollectionTypeOptions.tvshows));
 
-        Assert.All(
-            options.TypeOptions,
-            itemOptions => Assert.Empty(itemOptions.ImageFetchers));
+        Assert.Equal(
+            [LibraryOptionConfigurator.CustomArtworkProviderName],
+            options.GetTypeOptions("Series")!.ImageFetcherOrder);
+        Assert.Equal(
+            [LibraryOptionConfigurator.CustomArtworkProviderName],
+            options.GetTypeOptions("Season")!.ImageFetcherOrder);
+        Assert.Empty(options.GetTypeOptions("Episode")!.ImageFetcherOrder);
         Assert.Equal(
             ["Episode", "Season", "Series"],
             options.TypeOptions.Select(value => value.Type).Order().ToArray());

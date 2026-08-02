@@ -10,6 +10,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
         IServiceCollection serviceCollection,
         IServerApplicationHost applicationHost)
     {
+        serviceCollection.AddHostedService<StalePluginVersionCleanupService>();
         serviceCollection.AddSingleton<LibraryConfigurationService>();
         serviceCollection.AddSingleton<ArtworkPreferenceRefreshService>();
     }

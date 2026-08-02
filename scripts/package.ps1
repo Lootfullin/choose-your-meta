@@ -69,7 +69,7 @@ Copy-Item -LiteralPath $dll -Destination $stage
 
 $meta = @{
     category = 'General'
-    changelog = 'Fix automatic updates and settings persistence, keep Custom Artwork first for every supported media type, and perform a one-time repair refresh for existing cached artwork.'
+    changelog = 'Fix settings persistence and provider ordering. Mark stale plugin versions deleted and retry directory cleanup so Jellyfin cannot fall back to an older build.'
     description = 'Choose Russian or English metadata, posters, and logos for movies and collections.'
     guid = 'a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b'
     name = 'Choose your Meta!'

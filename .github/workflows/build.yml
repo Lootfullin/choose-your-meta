@@ -27,7 +27,7 @@ jobs:
       - run: node scripts/test-config-page.mjs
       - name: Build and verify release package
         if: runner.os == 'Linux'
-        run: ./scripts/package.sh 1.4.6 10.11.11
+        run: ./scripts/package.sh 1.4.7 10.11.11
       - name: Upload plugin DLL
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v7

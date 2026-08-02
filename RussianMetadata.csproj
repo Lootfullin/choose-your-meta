@@ -6,8 +6,8 @@
     <Nullable>enable</Nullable>
     <RootNamespace>RussianMetadata</RootNamespace>
     <AssemblyName>RussianMetadata</AssemblyName>
-    <AssemblyVersion>1.4.6.0</AssemblyVersion>
-    <FileVersion>1.4.6.0</FileVersion>
+    <AssemblyVersion>1.4.7.0</AssemblyVersion>
+    <FileVersion>1.4.7.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

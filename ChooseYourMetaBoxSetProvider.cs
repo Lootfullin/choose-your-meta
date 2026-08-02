@@ -77,6 +77,7 @@ public sealed class ChooseYourMetaBoxSetProvider
             }
 
             var item = new BoxSet();
+            ApplyRussianLanguagePreference(item);
             var russianName = MovieTextLocalization.RussianOrNull(
                 collection.Name);
             var russianOverview = MovieTextLocalization.RussianOrNull(
@@ -134,6 +135,7 @@ public sealed class ChooseYourMetaBoxSetProvider
 
         try
         {
+            ApplyRussianLanguagePreference(item);
             using var httpClient = CreateHttpClient(config);
             var collection = await GetCollection(tmdbId, apiKey, httpClient, cancellationToken);
             if (collection is null)
@@ -296,6 +298,12 @@ public sealed class ChooseYourMetaBoxSetProvider
             out var id)
             ? id
             : 0;
+    }
+
+    private static void ApplyRussianLanguagePreference(BoxSet item)
+    {
+        item.PreferredMetadataLanguage = "ru";
+        item.PreferredMetadataCountryCode = "RU";
     }
 
     private static HttpClient CreateHttpClient(PluginConfiguration config)

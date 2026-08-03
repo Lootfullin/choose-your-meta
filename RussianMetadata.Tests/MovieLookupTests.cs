@@ -124,6 +124,57 @@ public sealed class MovieLookupTests
     }
 
     [Fact]
+    public void SelectCandidate_RejectsAmbiguousSameTitleAndYear()
+    {
+        var candidates = new List<TmdbSearchItem>
+        {
+            new() { Id = 1, Title = "Blade", ReleaseDate = "1998-08-21" },
+            new() { Id = 2, Title = "Blade", ReleaseDate = "1998-01-01" }
+        };
+
+        var selected = MovieLookup.SelectCandidate(
+            candidates,
+            new MovieLookup("Blade", 1998));
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
+    public void SelectCandidate_RejectsPartialContainsMatch()
+    {
+        var candidates = new List<TmdbSearchItem>
+        {
+            new()
+            {
+                Id = 85723,
+                Title = "Blade: The Iron Cross",
+                ReleaseDate = "2020-06-26"
+            }
+        };
+
+        var selected = MovieLookup.SelectCandidate(
+            candidates,
+            new MovieLookup("Iron Cross", 2020));
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
+    public void SelectCandidate_RejectsTitleMatchWithWrongYear()
+    {
+        var candidates = new List<TmdbSearchItem>
+        {
+            new() { Id = 999, Title = "Blade", ReleaseDate = "1973-01-01" }
+        };
+
+        var selected = MovieLookup.SelectCandidate(
+            candidates,
+            new MovieLookup("Blade", 1998));
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
     public void TmdbMovieDetails_DeserializesImdbId()
     {
         const string json = """{"id":667,"imdb_id":"tt0062512"}""";

@@ -55,13 +55,8 @@ public partial class RussianMovieProvider :
     {
         var config = Plugin.Configuration;
         int? tmdbId = MovieLookup.ExtractTmdbId(item.ProviderIds);
-        if (tmdbId is null)
-        {
-            _logger.LogInformation(
-                "ChooseYourMeta: Post-refresh title skipped for '{Name}': no TMDB ID",
-                item.Name);
-            return ItemUpdateType.None;
-        }
+        var imdbId = item.GetProviderId(MetadataProvider.Imdb);
+        var identityChanged = false;
 
         var tmdbApiKey = TmdbApiKeyResolver.Resolve(config);
         if (string.IsNullOrWhiteSpace(tmdbApiKey))
@@ -80,6 +75,40 @@ public partial class RussianMovieProvider :
                 "Accept",
                 "application/json");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
+
+            if (!string.IsNullOrWhiteSpace(imdbId))
+            {
+                var findUrl = $"{TmdbApiBase}/find/{Uri.EscapeDataString(imdbId)}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
+                using var findResponse = await httpClient.GetAsync(findUrl, cancellationToken);
+                if (findResponse.IsSuccessStatusCode)
+                {
+                    var findJson = await findResponse.Content.ReadAsStringAsync(cancellationToken);
+                    var find = JsonSerializer.Deserialize<TmdbFindResult>(findJson, JsonOptions.Default);
+                    if (find?.MovieResults is { Count: 1 })
+                    {
+                        var exactTmdbId = find.MovieResults[0].Id;
+                        if (tmdbId != exactTmdbId)
+                        {
+                            _logger.LogWarning(
+                                "ChooseYourMeta: correcting movie TMDB ID {OldTmdbId} -> {NewTmdbId} using IMDb {ImdbId}",
+                                tmdbId,
+                                exactTmdbId,
+                                imdbId);
+                            item.SetProviderId(MetadataProvider.Tmdb, exactTmdbId.ToString(CultureInfo.InvariantCulture));
+                            tmdbId = exactTmdbId;
+                            identityChanged = true;
+                        }
+                    }
+                }
+            }
+
+            if (tmdbId is null)
+            {
+                _logger.LogInformation(
+                    "ChooseYourMeta: Post-refresh title skipped for '{Name}': no verified TMDB ID",
+                    item.Name);
+                return ItemUpdateType.None;
+            }
 
             var url = $"{TmdbApiBase}/movie/{tmdbId.Value}?api_key={Uri.EscapeDataString(tmdbApiKey)}&language=ru-RU";
             using var response = await httpClient.GetAsync(url, cancellationToken);
@@ -101,7 +130,8 @@ public partial class RussianMovieProvider :
                 return ItemUpdateType.None;
             }
 
-            var changed = ApplyTmdbCollection(item, details.BelongsToCollection);
+            var changed = identityChanged
+                | ApplyTmdbCollection(item, details.BelongsToCollection);
             var russianTitle = MovieTextLocalization.RussianOrNull(details.Title);
             if (config.EnableRussianTitles
                 && !string.IsNullOrWhiteSpace(russianTitle)
@@ -223,8 +253,8 @@ public partial class RussianMovieProvider :
             httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
-            int? resolvedTmdbId = knownTmdbId;
-            if (resolvedTmdbId is null && !string.IsNullOrEmpty(imdbId))
+            int? resolvedTmdbId = null;
+            if (!string.IsNullOrEmpty(imdbId))
             {
                 var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
                 using var findResponse = await httpClient.GetAsync(findUrl, cancellationToken);
@@ -232,11 +262,26 @@ public partial class RussianMovieProvider :
                 {
                     var findJson = await findResponse.Content.ReadAsStringAsync(cancellationToken);
                     var findData = JsonSerializer.Deserialize<TmdbFindResult>(findJson, JsonOptions.Default);
-                    resolvedTmdbId = findData?.MovieResults?.Count > 0
+                    resolvedTmdbId = findData?.MovieResults is { Count: 1 }
                         ? findData.MovieResults[0].Id
                         : null;
+                    if (resolvedTmdbId is not null
+                        && knownTmdbId is not null
+                        && resolvedTmdbId != knownTmdbId)
+                    {
+                        _logger.LogWarning(
+                            "ChooseYourMeta: correcting movie TMDB ID {OldTmdbId} -> {NewTmdbId} using IMDb {ImdbId}",
+                            knownTmdbId,
+                            resolvedTmdbId,
+                            imdbId);
+                    }
                 }
             }
+
+            // A TMDB ID already stored by Jellyfin is preferable to a name
+            // search. An exact IMDb lookup above is the only automatic source
+            // allowed to replace it.
+            resolvedTmdbId ??= knownTmdbId;
 
             if (resolvedTmdbId is null && !string.IsNullOrWhiteSpace(lookup.Name))
             {
@@ -882,7 +927,7 @@ internal sealed record MovieLookup(string Name, int? Year)
         }
 
         var normalizedLookup = Normalize(lookup.Name);
-        return candidates
+        var ranked = candidates
             .Select((candidate, index) => new
             {
                 Candidate = candidate,
@@ -894,12 +939,24 @@ internal sealed record MovieLookup(string Name, int? Year)
                     Score(normalizedLookup, Normalize(candidate.Title)),
                     Score(normalizedLookup, Normalize(candidate.OriginalTitle)))
             })
-            .Where(item => item.TitleScore > 0)
+            .Where(item => item.TitleScore >= 2)
+            .Where(item => lookup.Year is null
+                || item.YearScore > 0)
             .OrderByDescending(item => item.TitleScore)
             .ThenByDescending(item => item.YearScore)
             .ThenBy(item => item.Index)
-            .Select(item => item.Candidate)
-            .FirstOrDefault();
+            .ToArray();
+
+        if (ranked.Length == 0)
+        {
+            return null;
+        }
+
+        var best = ranked[0];
+        var ambiguous = ranked.Skip(1).Any(item =>
+            item.TitleScore == best.TitleScore
+            && item.YearScore == best.YearScore);
+        return ambiguous ? null : best.Candidate;
     }
 
     private static int ScoreYear(int? expected, int? actual)

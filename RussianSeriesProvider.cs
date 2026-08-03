@@ -62,6 +62,7 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
         {
             tmdbSuccess = await TryTmdbSeries(
                 info.Name,
+                info.Year,
                 tmdbId,
                 imdbId,
                 config,
@@ -141,14 +142,6 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             }
         }
 
-        // If no IMDb ID, try finding one by name (using the path-derived series name)
-        if (string.IsNullOrEmpty(imdbId) && !string.IsNullOrEmpty(seriesName))
-        {
-            try { imdbId = await FindImdbIdBySeriesName(seriesName, cancellationToken); }
-            catch { }
-            _logger.LogInformation("RussianMetadata (Series): FetchAsync FindImdbIdBySeriesName — ImdbId={Id}", imdbId ?? "N/A");
-        }
-
         var tempResult = new MetadataResult<Series>();
         bool tmdbSuccess = false;
         bool wikidataSuccess = false;
@@ -160,6 +153,7 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             _logger.LogInformation("RussianMetadata (Series): FetchAsync Step 1 — Trying TMDB for {Name}", seriesName);
             tmdbSuccess = await TryTmdbSeries(
                 seriesName,
+                item.ProductionYear,
                 knownTmdbId,
                 imdbId,
                 config,
@@ -176,15 +170,18 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             wikidataSuccess = await TryWikidata(imdbId, config, tempResult, cancellationToken);
         }
 
-        // Step 3: Wikidata by name (fallback when no IMDb ID available)
-        if (!tmdbSuccess && !wikidataSuccess && string.IsNullOrEmpty(imdbId) && !string.IsNullOrEmpty(seriesName))
-        {
-            _logger.LogInformation("RussianMetadata (Series): FetchAsync Step 3 — Wikidata by name '{Name}'", seriesName);
-            wikidataSuccess = await TryWikidataByName(seriesName, config, tempResult, cancellationToken);
-        }
-
         if ((tmdbSuccess || wikidataSuccess) && tempResult.Item != null)
         {
+            var resolvedTmdbId = MovieLookup.ExtractTmdbId(tempResult.Item.ProviderIds);
+            var identityChanged = resolvedTmdbId is not null
+                && resolvedTmdbId != knownTmdbId;
+            if (identityChanged)
+            {
+                item.SetProviderId(
+                    MetadataProvider.Tmdb,
+                    resolvedTmdbId!.Value.ToString(CultureInfo.InvariantCulture));
+            }
+
             if (config.EnableRussianTitles && !string.IsNullOrEmpty(tempResult.Item.Name))
             {
                 item.Name = tempResult.Item.Name;
@@ -206,6 +203,7 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
 
     private async Task<bool> TryTmdbSeries(
         string name,
+        int? year,
         int? knownTmdbId,
         string? imdbId,
         Configuration.PluginConfiguration config,
@@ -223,10 +221,10 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
             httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
             httpClient.Timeout = TimeSpan.FromSeconds(5);
 
-            int? tmdbId = knownTmdbId;
+            int? tmdbId = null;
 
             // Path A: Find by IMDb ID
-            if (tmdbId is null && !string.IsNullOrEmpty(imdbId))
+            if (!string.IsNullOrEmpty(imdbId))
             {
                 var findUrl = $"{TmdbApiBase}/find/{imdbId}?api_key={Uri.EscapeDataString(tmdbApiKey)}&external_source=imdb_id";
                 _logger.LogInformation("RussianMetadata (Series): TMDB find URL (without key): {Url}", findUrl.Replace(tmdbApiKey, "***"));
@@ -238,8 +236,20 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
                 {
                     var findJson = await findResponse.Content.ReadAsStringAsync(cancellationToken);
                     var findData = JsonSerializer.Deserialize<TmdbFindResult>(findJson, JsonOptions.Default);
-                    var tvRef = findData?.TvResults?.Count > 0 ? findData.TvResults[0] : null;
+                    var tvRef = findData?.TvResults is { Count: 1 }
+                        ? findData.TvResults[0]
+                        : null;
                     tmdbId = tvRef?.Id;
+                    if (tmdbId is not null
+                        && knownTmdbId is not null
+                        && tmdbId != knownTmdbId)
+                    {
+                        _logger.LogWarning(
+                            "ChooseYourMeta: correcting series TMDB ID {OldTmdbId} -> {NewTmdbId} using IMDb {ImdbId}",
+                            knownTmdbId,
+                            tmdbId,
+                            imdbId);
+                    }
                     _logger.LogInformation("RussianMetadata (Series): TMDB find result — tvResults={Count}, tmdbId={Id}", findData?.TvResults?.Count ?? 0, tmdbId?.ToString() ?? "N/A");
                 }
                 else
@@ -247,6 +257,10 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
                     _logger.LogWarning("RussianMetadata (Series): TMDB find failed ({Status})", findResponse.StatusCode);
                 }
             }
+
+            // Preserve a known Jellyfin identity unless an exact IMDb mapping
+            // above proved that it was stale.
+            tmdbId ??= knownTmdbId;
 
             // Path B: No IMDb ID or not found by IMDb — search by name
             if (tmdbId == null && !string.IsNullOrEmpty(name))
@@ -262,14 +276,24 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
                 {
                     var searchJson = await searchResponse.Content.ReadAsStringAsync(cancellationToken);
                     var searchResult = JsonSerializer.Deserialize<SeriesTmdbTvSearchResponse>(searchJson, JsonOptions.Default);
-                    if (searchResult?.Results?.Count > 0)
+                    var selected = SeriesLookup.SelectCandidate(
+                        searchResult?.Results,
+                        new SeriesLookup(name, year));
+                    if (selected is not null)
                     {
-                        tmdbId = searchResult.Results[0].Id;
-                        _logger.LogInformation("RussianMetadata (Series): TMDB search — {Name} matched {Count} results, picked first ID={Id}", name, searchResult.Results.Count, tmdbId);
+                        tmdbId = selected.Id;
+                        _logger.LogInformation(
+                            "RussianMetadata (Series): TMDB search — {Name} ({Year}) safely matched ID={Id}",
+                            name,
+                            year,
+                            tmdbId);
                     }
                     else
                     {
-                        _logger.LogWarning("RussianMetadata (Series): TMDB search by name returned 0 results");
+                        _logger.LogWarning(
+                            "RussianMetadata (Series): TMDB search by name was empty or ambiguous for {Name} ({Year})",
+                            name,
+                            year);
                     }
                 }
                 else
@@ -499,83 +523,6 @@ public partial class RussianSeriesProvider : IRemoteMetadataProvider<Series, Ser
         return lastSlash >= 0 ? trimmed[(lastSlash + 1)..] : trimmed;
     }
 
-    /// <summary>
-    /// Search Wikidata by series name to find the IMDb ID (fallback when no tt ID in filename)
-    /// </summary>
-    private async Task<string?> FindImdbIdBySeriesName(string seriesName, CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("RussianMetadata (Series): Searching IMDb ID by name: {Name}", seriesName);
-
-        try
-        {
-            using var httpClient = _httpClientFactory.CreateClient("RussianMetadata");
-            httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
-            httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Jellyfin-RussianMetadata/1.0");
-            httpClient.Timeout = TimeSpan.FromSeconds(30);
-
-            // First, try to find the item by exact name match (any language)
-            var cleanName = CleanSeriesName(seriesName);
-            var safeName = EscapeSparqlString(cleanName);
-
-            var sparqlQuery = $@"
-SELECT ?item ?imdbId WHERE {{
-  ?item wdt:P31/wdt:P279* wd:Q15416.
-  ?item rdfs:label ?label.
-  FILTER(LCASE(?label) = LCASE(""{safeName}""))
-  ?item wdt:P345 ?imdbId.
-}}
-LIMIT 1";
-
-            var url = $"{WikidataSparqlEndpoint}?format=json&query={Uri.EscapeDataString(sparqlQuery)}";
-
-            using var response = await httpClient.GetAsync(url, cancellationToken);
-            if (response.IsSuccessStatusCode)
-            {
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                var sparqlResult = JsonSerializer.Deserialize<SparqlResult>(json, JsonOptions.Default);
-                var binding = sparqlResult?.Results?.Bindings?.Count > 0 ? sparqlResult.Results.Bindings[0] : null;
-
-                if (binding?.ImdbId?.Value != null)
-                {
-                    _logger.LogInformation("RussianMetadata (Series): Found IMDb ID {ImdbId} by name '{CleanName}'", binding.ImdbId.Value, cleanName);
-                    return binding.ImdbId.Value;
-                }
-            }
-
-            // Retry with CONTAINS for fuzzy search (any language)
-            var sparqlQueryFuzzy = $@"
-SELECT ?item ?imdbId ?label WHERE {{
-  ?item wdt:P31/wdt:P279* wd:Q15416.
-  ?item rdfs:label ?label.
-  FILTER(CONTAINS(LCASE(?label), LCASE(""{safeName}"")))
-  ?item wdt:P345 ?imdbId.
-}}
-LIMIT 1";
-
-            url = $"{WikidataSparqlEndpoint}?format=json&query={Uri.EscapeDataString(sparqlQueryFuzzy)}";
-
-            using var response2 = await httpClient.GetAsync(url, cancellationToken);
-            if (response2.IsSuccessStatusCode)
-            {
-                var json2 = await response2.Content.ReadAsStringAsync(cancellationToken);
-                var sparqlResult2 = JsonSerializer.Deserialize<SparqlResult>(json2, JsonOptions.Default);
-                var binding2 = sparqlResult2?.Results?.Bindings?.Count > 0 ? sparqlResult2.Results.Bindings[0] : null;
-
-                if (binding2?.ImdbId?.Value != null)
-                {
-                    _logger.LogInformation("RussianMetadata (Series): Found IMDb ID {ImdbId} by fuzzy name '{CleanName}'", binding2.ImdbId.Value, cleanName);
-                    return binding2.ImdbId.Value;
-                }
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(ex, "RussianMetadata (Series): Error searching IMDb ID by name");
-        }
-
-        return null;
-    }
-
     // ───── Wikidata ─────
 
     private async Task<WikidataEntity?> FetchWikidataEntityByImdbId(string imdbId, CancellationToken cancellationToken)
@@ -636,101 +583,6 @@ LIMIT 1";
             _logger.LogError(ex, "RussianMetadata (Series): Wikidata fetch error for {ImdbId}", imdbId);
             return null;
         }
-    }
-
-    // ───── Wikidata by name (no IMDb ID needed) ─────
-
-    private async Task<bool> TryWikidataByName(string seriesName, Configuration.PluginConfiguration config,
-        MetadataResult<Series> result, CancellationToken cancellationToken)
-    {
-        _logger.LogInformation("RussianMetadata (Series): Wikidata lookup by name: {Name}", seriesName);
-
-        try
-        {
-            var cleanName = CleanSeriesName(seriesName);
-            if (string.IsNullOrWhiteSpace(cleanName)) return false;
-
-            using var httpClient = _httpClientFactory.CreateClient("RussianMetadata");
-            httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
-            httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "Jellyfin-RussianMetadata/1.0");
-            httpClient.Timeout = TimeSpan.FromSeconds(30);
-
-            // Try exact match on any language label, then grab RU label/description
-            var safeName = EscapeSparqlString(cleanName);
-            var sparqlQuery = $@"
-SELECT ?item ?ruLabel ?ruDescription WHERE {{
-  ?item wdt:P31/wdt:P279* wd:Q15416.
-  ?item rdfs:label ?label.
-  FILTER(LCASE(?label) = LCASE(""{safeName}""))
-  OPTIONAL {{ ?item rdfs:label ?ruLabel. FILTER(LANG(?ruLabel) = ""ru"") }}
-  OPTIONAL {{ ?item schema:description ?ruDescription. FILTER(LANG(?ruDescription) = ""ru"") }}
-}}
-LIMIT 1";
-
-            var url = $"{WikidataSparqlEndpoint}?format=json&query={Uri.EscapeDataString(sparqlQuery)}";
-
-            using var response = await httpClient.GetAsync(url, cancellationToken);
-            if (response.IsSuccessStatusCode)
-            {
-                var json = await response.Content.ReadAsStringAsync(cancellationToken);
-                var sparqlResult = JsonSerializer.Deserialize<SparqlResult>(json, JsonOptions.Default);
-                var binding = sparqlResult?.Results?.Bindings?.Count > 0 ? sparqlResult.Results.Bindings[0] : null;
-
-                if (binding?.RuLabel?.Value != null)
-                {
-                    result.Item ??= new Series();
-
-                    if (config.EnableRussianTitles)
-                        result.Item.Name = binding.RuLabel.Value;
-
-                    if (config.EnableRussianOverviews && binding.RuDescription?.Value != null)
-                        result.Item.Overview = binding.RuDescription.Value;
-
-                    _logger.LogInformation("RussianMetadata (Series): Wikidata by name — '{Name}' -> '{RuName}'", seriesName, binding.RuLabel.Value);
-                    return true;
-                }
-            }
-
-            // Fuzzy fallback: CONTAINS on any language label
-            var sparqlFuzzy = $@"
-SELECT ?item ?ruLabel ?ruDescription WHERE {{
-  ?item wdt:P31/wdt:P279* wd:Q15416.
-  ?item rdfs:label ?label.
-  FILTER(CONTAINS(LCASE(?label), LCASE(""{safeName}"")))
-  OPTIONAL {{ ?item rdfs:label ?ruLabel. FILTER(LANG(?ruLabel) = ""ru"") }}
-  OPTIONAL {{ ?item schema:description ?ruDescription. FILTER(LANG(?ruDescription) = ""ru"") }}
-}}
-LIMIT 1";
-
-            url = $"{WikidataSparqlEndpoint}?format=json&query={Uri.EscapeDataString(sparqlFuzzy)}";
-            using var response2 = await httpClient.GetAsync(url, cancellationToken);
-            if (response2.IsSuccessStatusCode)
-            {
-                var json2 = await response2.Content.ReadAsStringAsync(cancellationToken);
-                var sparqlResult2 = JsonSerializer.Deserialize<SparqlResult>(json2, JsonOptions.Default);
-                var binding2 = sparqlResult2?.Results?.Bindings?.Count > 0 ? sparqlResult2.Results.Bindings[0] : null;
-
-                if (binding2?.RuLabel?.Value != null)
-                {
-                    result.Item ??= new Series();
-
-                    if (config.EnableRussianTitles)
-                        result.Item.Name = binding2.RuLabel.Value;
-
-                    if (config.EnableRussianOverviews && binding2.RuDescription?.Value != null)
-                        result.Item.Overview = binding2.RuDescription.Value;
-
-                    _logger.LogInformation("RussianMetadata (Series): Wikidata by name (fuzzy) — '{Name}' -> '{RuName}'", seriesName, binding2.RuLabel.Value);
-                    return true;
-                }
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            _logger.LogError(ex, "RussianMetadata (Series): Wikidata by name error for {Name}", seriesName);
-        }
-
-        return false;
     }
 
     // ───── Search ─────
@@ -871,4 +723,100 @@ internal class SeriesTmdbTvSearchItem
     public string? Overview { get; set; }
     [JsonPropertyName("first_air_date")]
     public string? FirstAirDate { get; set; }
+}
+
+internal sealed record SeriesLookup(string Name, int? Year)
+{
+    public static SeriesTmdbTvSearchItem? SelectCandidate(
+        IReadOnlyList<SeriesTmdbTvSearchItem>? candidates,
+        SeriesLookup lookup)
+    {
+        if (candidates is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var expected = Normalize(lookup.Name);
+        var ranked = candidates
+            .Select((candidate, index) => new
+            {
+                Candidate = candidate,
+                Index = index,
+                TitleScore = Math.Max(
+                    Score(expected, Normalize(candidate.Name)),
+                    Score(expected, Normalize(candidate.OriginalName))),
+                YearScore = ScoreYear(lookup.Year, GetYear(candidate.FirstAirDate)),
+            })
+            .Where(item => item.TitleScore >= 2)
+            .Where(item => lookup.Year is null || item.YearScore > 0)
+            .OrderByDescending(item => item.TitleScore)
+            .ThenByDescending(item => item.YearScore)
+            .ThenBy(item => item.Index)
+            .ToArray();
+
+        if (ranked.Length == 0)
+        {
+            return null;
+        }
+
+        var best = ranked[0];
+        var ambiguous = ranked.Skip(1).Any(item =>
+            item.TitleScore == best.TitleScore
+            && item.YearScore == best.YearScore);
+        return ambiguous ? null : best.Candidate;
+    }
+
+    private static int Score(string expected, string actual)
+    {
+        if (string.IsNullOrEmpty(expected) || string.IsNullOrEmpty(actual))
+        {
+            return 0;
+        }
+
+        if (expected == actual)
+        {
+            return 3;
+        }
+
+        return actual.StartsWith(expected, StringComparison.Ordinal)
+            || expected.StartsWith(actual, StringComparison.Ordinal)
+            ? 2
+            : 0;
+    }
+
+    private static int ScoreYear(int? expected, int? actual)
+    {
+        if (expected is null)
+        {
+            return 0;
+        }
+
+        if (actual is null)
+        {
+            return 0;
+        }
+
+        var difference = Math.Abs(expected.Value - actual.Value);
+        return difference switch
+        {
+            0 => 2,
+            1 => 1,
+            _ => 0,
+        };
+    }
+
+    private static string Normalize(string? value) =>
+        string.Concat((value ?? string.Empty)
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit));
+
+    private static int? GetYear(string? date) =>
+        date?.Length >= 4
+        && int.TryParse(
+            date[..4],
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out var year)
+            ? year
+            : null;
 }

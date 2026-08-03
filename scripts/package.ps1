@@ -69,7 +69,7 @@ Copy-Item -LiteralPath $dll -Destination $stage
 
 $meta = @{
     category = 'General'
-    changelog = 'Identify collections only from a consensus of at least two linked TMDB movies. Repair existing wrong collection IDs and never select the first ambiguous title-search result.'
+    changelog = 'Identify collections from linked movies and safely identify movies and series. Exact IMDb mappings correct stale TMDB IDs; ambiguous title/year searches are skipped instead of selecting the first result.'
     description = 'Choose Russian or English metadata, posters, and logos for movies and collections.'
     guid = 'a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b'
     name = 'Choose your Meta!'

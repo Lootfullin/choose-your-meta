@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-version="${1:-1.4.7}"
+version="${1:-1.4.8}"
 jellyfin_version="${2:-10.11.11}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
@@ -58,7 +58,7 @@ cp -- "${dll}" "${stage}/"
 cat > "${stage}/meta.json" <<EOF
 {
   "category": "General",
-  "changelog": "Preserve TMDB collection membership during movie refreshes so TMDb Box Sets no longer deletes and recreates localized collections.",
+  "changelog": "Identify collections from linked movies and safely identify movies and series. Exact IMDb mappings correct stale TMDB IDs; ambiguous title/year searches are skipped instead of selecting the first result.",
   "description": "Choose Russian or English metadata, posters, and logos for movies and collections.",
   "guid": "a8f3c2e1-4b5d-6e7f-8a9b-0c1d2e3f4a5b",
   "name": "Choose your Meta!",

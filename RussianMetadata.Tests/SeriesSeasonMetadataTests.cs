@@ -106,6 +106,74 @@ public sealed class SeriesSeasonMetadataTests
         Assert.Equal("738", person.ProviderIds["Tmdb"]);
     }
 
+    [Fact]
+    public void SeriesLookup_SelectsUniqueTitleAndYearMatch()
+    {
+        var candidates = new List<SeriesTmdbTvSearchItem>
+        {
+            new() { Id = 100, Name = "Шерлок Холмс", FirstAirDate = "1984-01-01" },
+            new()
+            {
+                Id = 19885,
+                Name = "Шерлок",
+                OriginalName = "Sherlock",
+                FirstAirDate = "2010-07-25"
+            }
+        };
+
+        var selected = SeriesLookup.SelectCandidate(
+            candidates,
+            new SeriesLookup("Sherlock", 2010));
+
+        Assert.Equal(19885, selected?.Id);
+    }
+
+    [Fact]
+    public void SeriesLookup_RejectsFirstResultWhenYearDoesNotMatch()
+    {
+        var candidates = new List<SeriesTmdbTvSearchItem>
+        {
+            new() { Id = 100, Name = "Sherlock", FirstAirDate = "1984-01-01" }
+        };
+
+        var selected = SeriesLookup.SelectCandidate(
+            candidates,
+            new SeriesLookup("Sherlock", 2010));
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
+    public void SeriesLookup_RejectsAmbiguousSameTitleWithoutYear()
+    {
+        var candidates = new List<SeriesTmdbTvSearchItem>
+        {
+            new() { Id = 1, Name = "The Office", FirstAirDate = "2001-07-09" },
+            new() { Id = 2, Name = "The Office", FirstAirDate = "2005-03-24" }
+        };
+
+        var selected = SeriesLookup.SelectCandidate(
+            candidates,
+            new SeriesLookup("The Office", null));
+
+        Assert.Null(selected);
+    }
+
+    [Fact]
+    public void SeriesLookup_RejectsPartialContainsMatch()
+    {
+        var candidates = new List<SeriesTmdbTvSearchItem>
+        {
+            new() { Id = 1, Name = "Star Wars Rebels", FirstAirDate = "2014-10-03" }
+        };
+
+        var selected = SeriesLookup.SelectCandidate(
+            candidates,
+            new SeriesLookup("Rebels", 2014));
+
+        Assert.Null(selected);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.TooManyRequests, true)]
     [InlineData(HttpStatusCode.BadGateway, true)]

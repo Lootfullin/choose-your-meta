@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -24,16 +25,14 @@ public sealed class ChooseYourMetaBoxSetProvider
 {
     private const string TmdbApiBase = "https://api.themoviedb.org/3";
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly ILibraryManager _libraryManager;
     private readonly ILogger<ChooseYourMetaBoxSetProvider> _logger;
+    private readonly ConcurrentDictionary<int, int?> _movieCollectionIds = new();
 
     public ChooseYourMetaBoxSetProvider(
         IHttpClientFactory httpClientFactory,
-        ILibraryManager libraryManager,
         ILogger<ChooseYourMetaBoxSetProvider> logger)
     {
         _httpClientFactory = httpClientFactory;
-        _libraryManager = libraryManager;
         _logger = logger;
     }
 
@@ -56,15 +55,12 @@ public sealed class ChooseYourMetaBoxSetProvider
         try
         {
             using var httpClient = CreateHttpClient(Configuration);
+            // Never identify a collection by taking the first title-search
+            // result. TMDB contains unrelated collections with identical
+            // names (for example two different "Blade Collection" entries).
+            // Automatic identification is repaired from the linked movies in
+            // FetchAsync, where we have enough evidence to choose safely.
             var tmdbId = ParseTmdbId(info.GetProviderId(MetadataProvider.Tmdb));
-            if (tmdbId <= 0 && !string.IsNullOrWhiteSpace(info.Name))
-            {
-                tmdbId = await SearchCollectionId(
-                    _libraryManager.ParseName(info.Name).Name,
-                    apiKey,
-                    httpClient,
-                    cancellationToken);
-            }
 
             var collection = await GetCollection(
                 tmdbId,
@@ -121,29 +117,53 @@ public sealed class ChooseYourMetaBoxSetProvider
         CancellationToken cancellationToken)
     {
         var config = Configuration;
-        if (!config.EnableRussianTitles && !config.EnableRussianOverviews)
+        var apiKey = TmdbApiKeyResolver.Resolve(config);
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
             return ItemUpdateType.None;
         }
 
         var tmdbId = ParseTmdbId(item.GetProviderId(MetadataProvider.Tmdb));
-        var apiKey = TmdbApiKeyResolver.Resolve(config);
-        if (tmdbId <= 0 || string.IsNullOrWhiteSpace(apiKey))
-        {
-            return ItemUpdateType.None;
-        }
-
         try
         {
-            ApplyRussianLanguagePreference(item);
             using var httpClient = CreateHttpClient(config);
+            var memberCollectionId = await ResolveCollectionIdFromMembers(
+                item,
+                apiKey,
+                httpClient,
+                cancellationToken);
+            var changed = false;
+            if (memberCollectionId is > 0 && memberCollectionId.Value != tmdbId)
+            {
+                _logger.LogInformation(
+                    "ChooseYourMeta: corrected collection {Name} TMDB ID from {OldTmdbId} to {NewTmdbId} using linked movies",
+                    item.Name,
+                    tmdbId > 0 ? tmdbId : null,
+                    memberCollectionId.Value);
+                tmdbId = memberCollectionId.Value;
+                item.SetProviderId(
+                    MetadataProvider.Tmdb,
+                    tmdbId.ToString(CultureInfo.InvariantCulture));
+                changed = true;
+            }
+
+            if (tmdbId <= 0)
+            {
+                return changed ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;
+            }
+
+            if (!config.EnableRussianTitles && !config.EnableRussianOverviews)
+            {
+                return changed ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;
+            }
+
+            ApplyRussianLanguagePreference(item);
             var collection = await GetCollection(tmdbId, apiKey, httpClient, cancellationToken);
             if (collection is null)
             {
-                return ItemUpdateType.None;
+                return changed ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;
             }
 
-            var changed = false;
             var russianName = MovieTextLocalization.RussianOrNull(collection.Name);
             if (config.EnableRussianTitles && !string.IsNullOrWhiteSpace(russianName) && item.Name != russianName)
             {
@@ -240,27 +260,73 @@ public sealed class ChooseYourMetaBoxSetProvider
             .GetAsync(url, cancellationToken);
     }
 
-    private static async Task<int> SearchCollectionId(
-        string name,
+    private async Task<int?> ResolveCollectionIdFromMembers(
+        BoxSet item,
         string apiKey,
         HttpClient httpClient,
         CancellationToken cancellationToken)
     {
-        var url = $"{TmdbApiBase}/search/collection"
+        var movieIds = item.GetLinkedChildren()
+            .OfType<Movie>()
+            .Select(movie => ParseTmdbId(movie.GetProviderId(MetadataProvider.Tmdb)))
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+        if (movieIds.Length < 2)
+        {
+            return null;
+        }
+
+        var collectionIds = new List<int?>(movieIds.Length);
+        foreach (var movieId in movieIds)
+        {
+            collectionIds.Add(await GetMovieCollectionId(
+                movieId,
+                apiKey,
+                httpClient,
+                cancellationToken));
+        }
+
+        return ResolveMemberConsensus(collectionIds);
+    }
+
+    internal static int? ResolveMemberConsensus(IEnumerable<int?> collectionIds)
+    {
+        var ids = collectionIds.ToArray();
+        if (ids.Length < 2 || ids.Any(id => id is null or <= 0))
+        {
+            return null;
+        }
+
+        var first = ids[0]!.Value;
+        return ids.All(id => id == first) ? first : null;
+    }
+
+    private async Task<int?> GetMovieCollectionId(
+        int movieId,
+        string apiKey,
+        HttpClient httpClient,
+        CancellationToken cancellationToken)
+    {
+        if (_movieCollectionIds.TryGetValue(movieId, out var cached))
+        {
+            return cached;
+        }
+
+        var url = $"{TmdbApiBase}/movie/{movieId.ToString(CultureInfo.InvariantCulture)}"
             + $"?api_key={Uri.EscapeDataString(apiKey)}"
-            + "&language=ru-RU"
-            + $"&query={Uri.EscapeDataString(name)}";
+            + "&language=en-US";
         using var response = await httpClient.GetAsync(url, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            return 0;
+            return null;
         }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
-        var search = JsonSerializer.Deserialize<TmdbCollectionSearchResponse>(
-            json,
-            JsonOptions.Default);
-        return search?.Results?.FirstOrDefault()?.Id ?? 0;
+        var movie = JsonSerializer.Deserialize<BoxSetTmdbMovieDetails>(json, JsonOptions.Default);
+        var collectionId = movie?.BelongsToCollection?.Id;
+        _movieCollectionIds[movieId] = collectionId;
+        return collectionId;
     }
 
     private static async Task<TmdbCollectionDetails?> GetCollection(
@@ -348,4 +414,15 @@ internal sealed class TmdbCollectionDetails
 
     [JsonPropertyName("poster_path")]
     public string? PosterPath { get; set; }
+}
+
+internal sealed class BoxSetTmdbMovieDetails
+{
+    [JsonPropertyName("belongs_to_collection")]
+    public BoxSetTmdbCollectionReference? BelongsToCollection { get; set; }
+}
+
+internal sealed class BoxSetTmdbCollectionReference
+{
+    public int Id { get; set; }
 }

@@ -17,4 +17,41 @@ public sealed class ReconcileCollectionMetadataTaskTests
             TimeSpan.FromMinutes(expectedMinutes),
             ReconcileCollectionMetadataTask.RetryDelay(attempts));
     }
+
+    [Fact]
+    public void NeedsRefresh_QueuesIdentityAuditOnceEvenForLocalizedCollection()
+    {
+        var now = DateTime.UtcNow;
+        var entry = new CollectionReconciliationEntry();
+
+        Assert.True(ReconcileCollectionMetadataTask.NeedsRefresh(entry, true, true, now));
+
+        entry.IdentityAuditQueued = true;
+        Assert.False(ReconcileCollectionMetadataTask.NeedsRefresh(entry, true, true, now));
+    }
+
+    [Fact]
+    public void NeedsRefresh_KeepsRetryingUnlocalizedCollectionAfterDelay()
+    {
+        var now = DateTime.UtcNow;
+        var entry = new CollectionReconciliationEntry
+        {
+            IdentityAuditQueued = true,
+            NextAttemptUtc = now.AddMinutes(-1),
+        };
+
+        Assert.True(ReconcileCollectionMetadataTask.NeedsRefresh(entry, true, false, now));
+    }
+
+    [Fact]
+    public void NeedsRefresh_AuditsIdentityWhenLocalizationIsDisabled()
+    {
+        var now = DateTime.UtcNow;
+        var entry = new CollectionReconciliationEntry();
+
+        Assert.True(ReconcileCollectionMetadataTask.NeedsRefresh(entry, false, true, now));
+
+        entry.IdentityAuditQueued = true;
+        Assert.False(ReconcileCollectionMetadataTask.NeedsRefresh(entry, false, false, now));
+    }
 }

@@ -46,7 +46,7 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
     public string Key => "ChooseYourMetaReconcileCollections";
 
     public string Description =>
-        "Возвращает русские названия коллекциям, которые фоновые задачи Jellyfin или TMDB создали либо переименовали на английском.";
+        "Проверяет TMDB ID коллекций по входящим фильмам и возвращает русские названия после фоновых задач Jellyfin или TMDB.";
 
     public string Category => "Choose your Meta!";
 
@@ -57,11 +57,7 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
     public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
     {
         _configurationService.Apply();
-        if (Plugin.Instance?.Configuration.EnableRussianTitles != true)
-        {
-            progress.Report(100);
-            return Task.CompletedTask;
-        }
+        var localizationEnabled = Plugin.Instance?.Configuration.EnableRussianTitles == true;
 
         var query = new InternalItemsQuery
         {
@@ -70,8 +66,6 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
         };
         var candidates = _libraryManager.GetItemList(query)
             .OfType<BoxSet>()
-            .Where(item => !MovieTextLocalization.ContainsCyrillic(item.Name))
-            .Where(item => !string.IsNullOrWhiteSpace(item.GetProviderId(MetadataProvider.Tmdb)))
             .OrderBy(item => item.Id)
             .ToArray();
         var state = LoadState();
@@ -88,7 +82,11 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
 
         var now = DateTime.UtcNow;
         var selected = candidates
-            .Where(item => state.Entries[item.Id].NextAttemptUtc <= now)
+            .Where(item => NeedsRefresh(
+                state.Entries[item.Id],
+                localizationEnabled,
+                MovieTextLocalization.ContainsCyrillic(item.Name),
+                now))
             .OrderBy(item => state.Entries[item.Id].NextAttemptUtc)
             .ThenBy(item => item.Id)
             .Take(MaxCollectionsPerRun)
@@ -107,6 +105,7 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
             };
             _providerManager.QueueRefresh(item.Id, options, RefreshPriority.High);
             var entry = state.Entries[item.Id];
+            entry.IdentityAuditQueued = true;
             entry.Attempts++;
             entry.NextAttemptUtc = now + RetryDelay(entry.Attempts);
         }
@@ -116,7 +115,7 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
         if (selected.Length > 0)
         {
             _logger.LogInformation(
-                "ChooseYourMeta: русская локализация поставлена в очередь для {Count} коллекций; всего требуют проверки {Total}",
+                "ChooseYourMeta: проверка TMDB ID и русской локализации поставлена в очередь для {Count} коллекций; всего в аудите {Total}",
                 selected.Length,
                 candidates.Length);
         }
@@ -136,6 +135,14 @@ public sealed class ReconcileCollectionMetadataTask : IScheduledTask
 
     internal static TimeSpan RetryDelay(int attempts) =>
         TimeSpan.FromMinutes(Math.Min(1440, 15 * Math.Pow(2, Math.Clamp(attempts - 1, 0, 7))));
+
+    internal static bool NeedsRefresh(
+        CollectionReconciliationEntry entry,
+        bool localizationEnabled,
+        bool nameContainsCyrillic,
+        DateTime now) =>
+        !entry.IdentityAuditQueued
+        || (localizationEnabled && !nameContainsCyrillic && entry.NextAttemptUtc <= now);
 
     private static CollectionReconciliationState LoadState()
     {
@@ -189,6 +196,8 @@ internal sealed class CollectionReconciliationState
 
 internal sealed class CollectionReconciliationEntry
 {
+    public bool IdentityAuditQueued { get; set; }
+
     public int Attempts { get; set; }
 
     public DateTime NextAttemptUtc { get; set; }
